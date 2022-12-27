@@ -1,5 +1,7 @@
+/build/
 /obj_dir/
 /.cache/
 /trace/
 /compile_commands.json
 /pubdocs
+tags

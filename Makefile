@@ -1,13 +1,11 @@
-.PHONY: verilate runv bear clean
+.PHONY: ctags clean
 
-verilate:
-	verilator -cc -exe --trace --build -Wall hw/Top.sv sim/main.cpp
+ctags:
+	ctags -R hw/
 
-runv: verilate
-	./obj_dir/Vmain
-
-bear:
-	bear -- make verilate
+cmake:
+	cmake -G Ninja -S . -B build
+	cmake --build build
 
 clean:
-	rm -rf obj_dir/ compile_commands.json trace/ .cache/
+	rm -rf build/ obj_dir/ compile_commands.json trace/ .cache/ tags
