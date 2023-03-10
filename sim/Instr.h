@@ -1,21 +1,37 @@
 #pragma once
 
+#include <bitset>
 #include <cstdint>
 #include <stdexcept>
+#include <optional>
+#include <iostream>
 
 class RISCSInstr {
 public:
   enum class Op {
     INVALID,
+    NOP,
     ADD,
     ADDI,
     SUB,
+    SUBI,
+    OR,
+    ORI,
     AND,
+    ANDI,
     XOR,
+    XORI,
+    SHL,
+    SHLI,
+    SHR,
+    SHRI,
+    SHRA,
+    SHRAI,
   };
 
   enum class Reg {
     INVALID,
+    NONE,
     X0,
     X1,
     X2,
@@ -125,12 +141,25 @@ public:
 
   static constexpr std::uint8_t encodeOp(Op op) {
     switch (op) {
+    case Op::NOP:
+        return 0b0000000;
     case Op::ADD:
     case Op::SUB:
-    case Op::XOR:
+    case Op::OR:
     case Op::AND:
+    case Op::XOR:
+    case Op::SHL:
+    case Op::SHR:
+    case Op::SHRA:
       return 0b0110011;
     case Op::ADDI:
+    case Op::SUBI:
+    case Op::ORI:
+    case Op::ANDI:
+    case Op::XORI:
+    case Op::SHLI:
+    case Op::SHRI:
+    case Op::SHRAI:
       return 0b0010011;
     default:
       throw std::invalid_argument("Invalid operation cannot be encoded");
@@ -138,18 +167,40 @@ public:
   }
 
   static constexpr std::uint8_t encodeArithOp(Op op) {
-      switch (op) {
-          case Op::ADD:
-          case Op::ADDI:
-              return 0b000;
-          case Op::SUB:
-              return 0b001;
-          default: throw std::invalid_argument("Non-artihmetic operation cannot be encoded as arithmetic");
-      }
+    switch (op) {
+    case Op::ADD:
+    case Op::ADDI:
+      return 0b000;
+    case Op::SUB:
+    case Op::SUBI:
+      return 0b001;
+    case Op::OR:
+    case Op::ORI:
+      return 0b010;
+    case Op::AND:
+    case Op::ANDI:
+      return 0b011;
+    case Op::XOR:
+    case Op::XORI:
+      return 0b100;
+    case Op::SHL:
+    case Op::SHLI:
+      return 0b101;
+    case Op::SHR:
+    case Op::SHRI:
+      return 0b110;
+    case Op::SHRA:
+    case Op::SHRAI:
+      return 0b111;
+    default:
+      throw std::invalid_argument(
+          "Non-artihmetic operation cannot be encoded as arithmetic");
+    }
   }
 
-  static constexpr std::uint32_t encodeR(std::uint8_t op, std::uint8_t rd, std::uint8_t funct3,
-                                         std::uint8_t rs1, std::uint8_t rs2,
+  static constexpr std::uint32_t encodeR(std::uint8_t op, std::uint8_t rd,
+                                         std::uint8_t funct3, std::uint8_t rs1,
+                                         std::uint8_t rs2,
                                          std::uint8_t funct7) {
     std::uint32_t instr = (op & nbits(6)) | (rd & nbits(5)) << 7 |
                           (funct3 & nbits(3)) << 12 | (rs1 & nbits(5)) << 15 |
@@ -157,11 +208,12 @@ public:
     return instr;
   }
 
-  static constexpr std::uint32_t encodeI(std::uint8_t op, std::uint8_t rd, std::uint8_t funct3,
-                                         std::uint8_t rs1, std::int32_t imm) {
-    std::uint32_t trunc = (imm & ~nbits(12));
-    if (trunc != 0 && trunc != ~nbits(12)) {
-        throw std::invalid_argument("Immediate would overflow");
+  static constexpr std::uint32_t encodeI(std::uint8_t op, std::uint8_t rd,
+                                         std::uint8_t funct3, std::uint8_t rs1,
+                                         std::int32_t imm) {
+    std::uint32_t trunc = (imm & ~nbits(11));
+    if (trunc != 0 && trunc != ~nbits(11)) {
+      throw std::invalid_argument("Immediate would overflow");
     }
 
     std::uint32_t instr = (op & nbits(6)) | (rd & nbits(5)) << 7 |
@@ -170,41 +222,126 @@ public:
     return instr;
   }
 
-  constexpr std::uint32_t encode() {
+  constexpr std::uint32_t encode() const {
     std::uint8_t opEnc = encodeOp(op);
     switch (op) {
+    case Op::NOP:
+        return encodeR(opEnc, 0, 0, 0, 0, 0);
     case Op::ADD:
-      return encodeR(opEnc, encodeReg(rd), encodeArithOp(op), encodeReg(rs1), encodeReg(rs2), 0);
+    case Op::SUB:
+    case Op::OR:
+    case Op::AND:
+    case Op::XOR:
+    case Op::SHL:
+    case Op::SHR:
+    case Op::SHRA:
+      return encodeR(opEnc, encodeReg(rd), encodeArithOp(op), encodeReg(rs1),
+                     encodeReg(rs2), 0);
     case Op::ADDI:
-      return encodeI(opEnc, encodeReg(rd), encodeArithOp(op), encodeReg(rs1), imm);
+    case Op::SUBI:
+    case Op::ORI:
+    case Op::ANDI:
+    case Op::XORI:
+    case Op::SHLI:
+    case Op::SHRI:
+    case Op::SHRAI:
+      return encodeI(opEnc, encodeReg(rd), encodeArithOp(op), encodeReg(rs1),
+                     imm.value());
     default:
       throw std::invalid_argument("Invalid instruction cannot be encoded");
     }
   }
 
-  constexpr RISCSInstr(Op op, Reg rd, Reg rs1, Reg rs2, std::int32_t imm)
-   : op(op), rd(rd), rs1(rs1), rs2(rs2), imm(imm) {}
+  constexpr RISCSInstr(Op op, Reg rd, Reg rs1, Reg rs2, std::optional<std::int32_t> imm)
+      : op(op), rd(rd), rs1(rs1), rs2(rs2), imm(imm) {}
+
+  constexpr RISCSInstr(Op op, Reg rd, Reg rs1, Reg rs2)
+      : op(op), rd(rd), rs1(rs1), rs2(rs2), imm({}){}
+
+  constexpr RISCSInstr(Op op, Reg rd, Reg rs1, std::int32_t imm)
+      : op(op), rd(rd), rs1(rs1), rs2(Reg::NONE), imm({imm}){}
+
 
 private:
   Op op;
   Reg rd;
   Reg rs1;
   Reg rs2;
-  std::int32_t imm;
+  std::optional<std::int32_t> imm;
 
   static constexpr std::uint32_t nbits(int n) { return (1U << n) - 1; }
 };
 
 class RISCSInstrBuilder {
-    public:
-    using Reg = RISCSInstr::Reg;
-    using Op = RISCSInstr::Op;
+public:
+  using Reg = RISCSInstr::Reg;
+  using Op = RISCSInstr::Op;
 
-    static constexpr RISCSInstr add(Reg rd, Reg rs1, Reg rs2) {
-        return RISCSInstr{Op::ADD, rd, rs1, rs2, 0};
-    }
+  static constexpr RISCSInstr Nop(Reg rd, Reg rs1, Reg rs2) {
+    return RISCSInstr{Op::NOP, Reg::NONE, Reg::NONE, Reg::NONE, 0};
+  }
 
-    static constexpr RISCSInstr add(Reg rd, Reg rs1, std::int32_t imm) {
-        return RISCSInstr{Op::ADDI, rd, rs1, Reg::INVALID, imm};
-    }
+  static constexpr RISCSInstr Add(Reg rd, Reg rs1, Reg rs2) {
+    return RISCSInstr{Op::ADD, rd, rs1, rs2, 0};
+  }
+
+  static constexpr RISCSInstr Add(Reg rd, Reg rs1, std::int32_t imm) {
+    return RISCSInstr{Op::ADDI, rd, rs1, Reg::INVALID, imm};
+  }
+
+  static constexpr RISCSInstr Sub(Reg rd, Reg rs1, Reg rs2) {
+    return RISCSInstr{Op::SUB, rd, rs1, rs2, 0};
+  }
+
+  static constexpr RISCSInstr Sub(Reg rd, Reg rs1, std::int32_t imm) {
+    return RISCSInstr{Op::SUBI, rd, rs1, Reg::INVALID, imm};
+  }
+
+  static constexpr RISCSInstr Or(Reg rd, Reg rs1, Reg rs2) {
+    return RISCSInstr{Op::OR, rd, rs1, rs2, 0};
+  }
+
+  static constexpr RISCSInstr Or(Reg rd, Reg rs1, std::int32_t imm) {
+    return RISCSInstr{Op::ORI, rd, rs1, Reg::INVALID, imm};
+  }
+
+  static constexpr RISCSInstr And(Reg rd, Reg rs1, Reg rs2) {
+    return RISCSInstr{Op::AND, rd, rs1, rs2, 0};
+  }
+
+  static constexpr RISCSInstr And(Reg rd, Reg rs1, std::int32_t imm) {
+    return RISCSInstr{Op::ANDI, rd, rs1, Reg::INVALID, imm};
+  }
+
+  static constexpr RISCSInstr Xor(Reg rd, Reg rs1, Reg rs2) {
+    return RISCSInstr{Op::XOR, rd, rs1, rs2, 0};
+  }
+
+  static constexpr RISCSInstr Xor(Reg rd, Reg rs1, std::int32_t imm) {
+    return RISCSInstr{Op::XORI, rd, rs1, Reg::INVALID, imm};
+  }
+
+  static constexpr RISCSInstr Shl(Reg rd, Reg rs1, Reg rs2) {
+    return RISCSInstr{Op::SHL, rd, rs1, rs2, 0};
+  }
+
+  static constexpr RISCSInstr Shl(Reg rd, Reg rs1, std::int32_t imm) {
+    return RISCSInstr{Op::SHLI, rd, rs1, Reg::INVALID, imm};
+  }
+
+  static constexpr RISCSInstr Shr(Reg rd, Reg rs1, Reg rs2) {
+    return RISCSInstr{Op::SHR, rd, rs1, rs2, 0};
+  }
+
+  static constexpr RISCSInstr Shr(Reg rd, Reg rs1, std::int32_t imm) {
+    return RISCSInstr{Op::SHRI, rd, rs1, Reg::INVALID, imm};
+  }
+
+  static constexpr RISCSInstr Shra(Reg rd, Reg rs1, Reg rs2) {
+    return RISCSInstr{Op::SHRA, rd, rs1, rs2, 0};
+  }
+
+  static constexpr RISCSInstr Shra(Reg rd, Reg rs1, std::int32_t imm) {
+    return RISCSInstr{Op::SHRAI, rd, rs1, Reg::INVALID, imm};
+  }
 };

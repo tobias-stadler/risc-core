@@ -11,6 +11,7 @@ package Instr;
   typedef logic [6:0] imm_s7_t;
 
   typedef enum logic [6:0] {
+    OP_NOP = 7'b0000000,
     OP_ARITH = 7'b0110011,  // Standard enc: R, Non standard minor ops
     OP_ARITHI = 7'b0010011,  // Standard enc: I, Non standard minor ops
     OP_LDUI = 7'b0110111,  // Standard, enc: U
@@ -49,53 +50,53 @@ package Instr;
   } op_st_t;
 
   typedef struct packed {
-    op_t op;
-    reg_t rd;
-    funct3_t funct3;
-    reg_t rs1;
-    reg_t rs2;
     funct7_t funct7;
+    reg_t rs2;
+    reg_t rs1;
+    funct3_t funct3;
+    reg_t rd;
+    op_t op;
   } enc_r_t;
 
   typedef struct packed {
-    op_t op;
-    imm_s5_t imm5;
-    reg_t rs1;
-    reg_t rs2;
     imm_s7_t imm7;
+    reg_t rs2;
+    reg_t rs1;
+    imm_s5_t imm5;
+    op_t op;
   } enc_s_t;
 
   typedef struct packed {
-    op_t op;
-    reg_t rd;
-    funct3_t funct3;
-    reg_t rs1;
     imm_i_t imm;
+    reg_t rs1;
+    funct3_t funct3;
+    reg_t rd;
+    op_t op;
   } enc_i_t;
 
   typedef struct packed {
-    op_t op;
-    cond_t cond;
-    funct3_t funct3;
-    reg_t rs1;
     imm_i_t imm;
+    reg_t rs1;
+    funct3_t funct3;
+    cond_t cond;
+    op_t op;
   } enc_ci_t;
 
   typedef struct packed {
-    op_t op;
-    reg_t rd;
     imm_u_t imm;
+    reg_t rd;
+    op_t op;
   } enc_u_t;
 
   typedef struct packed {
-    op_t op;
-    cond_t cond;
     imm_u_t imm;
+    cond_t cond;
+    op_t op;
   } enc_cu_t;
 
   typedef struct packed {
-    op_t   op;
     logic [31:7] rest;
+    op_t   op;
   } enc_op_t;
 
   typedef union packed {

@@ -1,21 +1,62 @@
 module DecodeStage (
     input logic clk,
     input logic rst,
-    input logic u_valid,
-    input logic d_rdy,
-    input instr_enc_t instr,
-    output logic d_valid,
-    output logic u_rdy,
-    output uop_decode_t uop
+    pipeline_if.Upstream u,
+    pipeline_if.Downstream d,
+    regfile_read_if.Client read0,
+    regfile_read_if.Client read1,
+    input Uop::fetch_t uopIn,
+    output Uop::decode_t uopOut
 );
+
+  logic stallBufferValid;
+  Uop::fetch_t stalledUop;
+  logic stalledUopValid;
+
+  Uop::fetch_t currUop;
+  logic currUopValid;
+
+  assign currUopValid = stallBufferValid ? stalledUopValid : u.valid;
+  assign currUop = stallBufferValid ? stalledUop : uopIn;
+
+  Uop::dec_t uopDec;
+  Decoder m_dec (
+      .enc(currUop.enc),
+      .dec(uopDec)
+  );
+
+  assign read0.addr = uopDec.rs1;
+  assign read1.addr = uopDec.rs2;
+  assign u.stall = stallBufferValid;
 
   always_ff @(posedge clk) begin
     //TODO register access needs to be bypassed!
     if (rst) begin
-      d_valid <= 0;
-      u_rdy <= 1;
-      uop <= 0;
+      stallBufferValid <= 0;
+      stalledUop <= 0;
+      stalledUopValid <= 0;
+      d.valid <= 0;
+      uopOut <= 0;
     end else begin
+      if (d.stall) begin
+        stalledUop <= currUop;
+        stalledUopValid <= currUopValid;
+        stallBufferValid <= 1;
+      end else begin
+        stallBufferValid <= 0;
+
+        d.valid <= currUopValid;
+        uopOut.ex <= uopDec.ex;
+        uopOut.fu <= uopDec.fu;
+        uopOut.op <= uopDec.op;
+        uopOut.rd <= uopDec.rd;
+        uopOut.rs1 <= uopDec.rs1;
+        uopOut.rs1val <= read0.val;
+        uopOut.rs2 <= uopDec.rs2;
+        uopOut.rs2val <= read1.val;
+        uopOut.imm <= uopDec.imm;
+        uopOut.immValid <= uopDec.immValid;
+      end
     end
   end
 
