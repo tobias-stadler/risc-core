@@ -3,6 +3,12 @@ module Decoder (
     output Uop::dec_t   dec
 );
 
+  Uop::val_t immI;
+  assign immI = {{20{enc.i.imm[11]}}, enc.i.imm};
+
+  Uop::val_t immS;
+  assign immS = {{20{enc.s.imm7[6]}}, enc.s.imm7, enc.s.imm5};
+
   always_comb begin
     dec.ex = Uop::EX_NONE;
     dec.rd = 0;
@@ -12,7 +18,9 @@ module Decoder (
     dec.imm = 0;
     dec.fu = Uop::FU_NONE;
     dec.op = 0;
+    dec.memOp = 0;
     case (enc.op.op)
+      Instr::OP_NOP:;
       Instr::OP_ARITH, Instr::OP_ARITHI: begin
         dec.fu = Uop::FU_INTALU;
         case (enc.r.funct3)
@@ -30,10 +38,46 @@ module Decoder (
         dec.rs1 = enc.r.rs1;
         if (enc.op.op == Instr::OP_ARITHI) begin
           dec.immValid = 1;
-          dec.imm = {{20{enc.i.imm[11]}}, enc.i.imm};
+          dec.imm = immI;
         end else begin
           dec.rs2 = enc.r.rs2;
         end
+      end
+      Instr::OP_LD: begin
+        dec.fu = Uop::FU_INTALU;
+        dec.op.intalu = Uop::INTALU_OP_ADD;
+        dec.immValid = 1;
+        dec.imm = immI;
+        dec.rd = enc.i.rd;
+        dec.rs1 = enc.i.rs1;
+        dec.memOp.en = 1;
+        case (enc.i.funct3)
+          Instr::OP_LD_B: dec.memOp.sz = Uop::MEM_OP_SZ_B;
+          Instr::OP_LD_H: dec.memOp.sz = Uop::MEM_OP_SZ_H;
+          Instr::OP_LD_W: dec.memOp.sz = Uop::MEM_OP_SZ_W;
+          Instr::OP_LD_BS: dec.memOp.sz = Uop::MEM_OP_SZ_B;
+          Instr::OP_LD_HS: dec.memOp.sz = Uop::MEM_OP_SZ_H;
+          default: dec.ex = Uop::EX_DECODE;
+        endcase
+        if (enc.i.funct3 == Instr::OP_LD_BS || enc.i.funct3 == Instr::OP_LD_HS) begin
+          dec.memOp.signExtend = 1;
+        end
+      end
+      Instr::OP_ST: begin
+        dec.fu = Uop::FU_INTALU;
+        dec.op.intalu = Uop::INTALU_OP_ADD;
+        dec.immValid = 1;
+        dec.imm = immS;
+        dec.rs1 = enc.s.rs1;
+        dec.rs2 = enc.s.rs2;
+        dec.memOp.en = 1;
+        dec.memOp.isSt = 1;
+        case (enc.s.funct3)
+          Instr::OP_ST_B: dec.memOp.sz = Uop::MEM_OP_SZ_B;
+          Instr::OP_ST_H: dec.memOp.sz = Uop::MEM_OP_SZ_H;
+          Instr::OP_ST_W: dec.memOp.sz = Uop::MEM_OP_SZ_W;
+          default: dec.ex = Uop::EX_DECODE;
+        endcase
       end
       default: dec.ex = Uop::EX_DECODE;
     endcase

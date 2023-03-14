@@ -30,7 +30,6 @@ module DecodeStage (
   assign u.stall = stallBufferValid;
 
   always_ff @(posedge clk) begin
-    //TODO register access needs to be bypassed!
     if (rst) begin
       stallBufferValid <= 0;
       stalledUop <= 0;
@@ -51,11 +50,12 @@ module DecodeStage (
         uopOut.op <= uopDec.op;
         uopOut.rd <= uopDec.rd;
         uopOut.rs1 <= uopDec.rs1;
-        uopOut.rs1val <= read0.val;
+        uopOut.rs1Val <= read0.val;
         uopOut.rs2 <= uopDec.rs2;
-        uopOut.rs2val <= read1.val;
+        uopOut.rs2Val <= read1.val;
         uopOut.imm <= uopDec.imm;
         uopOut.immValid <= uopDec.immValid;
+        uopOut.memOp <= uopDec.memOp;
       end
     end
   end

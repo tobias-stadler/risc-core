@@ -2,9 +2,9 @@
 
 #include <bitset>
 #include <cstdint>
-#include <stdexcept>
-#include <optional>
 #include <iostream>
+#include <optional>
+#include <stdexcept>
 
 class RISCSInstr {
 public:
@@ -27,6 +27,14 @@ public:
     SHRI,
     SHRA,
     SHRAI,
+    LDB,
+    LDH,
+    LDW,
+    LDBS,
+    LDHS,
+    STB,
+    STH,
+    STW
   };
 
   enum class Reg {
@@ -142,7 +150,7 @@ public:
   static constexpr std::uint8_t encodeOp(Op op) {
     switch (op) {
     case Op::NOP:
-        return 0b0000000;
+      return 0b0000000;
     case Op::ADD:
     case Op::SUB:
     case Op::OR:
@@ -161,6 +169,12 @@ public:
     case Op::SHRI:
     case Op::SHRAI:
       return 0b0010011;
+    case Op::LDB:
+    case Op::LDH:
+    case Op::LDW:
+    case Op::LDBS:
+    case Op::LDHS:
+      return 0b0000011;
     default:
       throw std::invalid_argument("Invalid operation cannot be encoded");
     }
@@ -211,8 +225,7 @@ public:
   static constexpr std::uint32_t encodeI(std::uint8_t op, std::uint8_t rd,
                                          std::uint8_t funct3, std::uint8_t rs1,
                                          std::int32_t imm) {
-    std::uint32_t trunc = (imm & ~nbits(11));
-    if (trunc != 0 && trunc != ~nbits(11)) {
+    if (!truncateable(imm, 12)) {
       throw std::invalid_argument("Immediate would overflow");
     }
 
@@ -222,11 +235,25 @@ public:
     return instr;
   }
 
+  static constexpr std::uint32_t encodeS(std::uint8_t op, std::uint8_t funct3,
+                                         std::uint8_t rs1, std::uint8_t rs2,
+                                         std::int32_t imm) {
+    if (!truncateable(imm, 12)) {
+      throw std::invalid_argument("Immediate would overflow");
+    }
+
+    std::uint32_t instr = (op & nbits(6)) | (imm & nbits(5)) << 7 |
+                          (funct3 & nbits(3)) << 12 | (rs1 & nbits(5)) << 15 |
+                          (rs2 & nbits(5)) << 20 |
+                          ((imm >> 5) & nbits(7)) << 25;
+    return instr;
+  }
+
   constexpr std::uint32_t encode() const {
     std::uint8_t opEnc = encodeOp(op);
     switch (op) {
     case Op::NOP:
-        return encodeR(opEnc, 0, 0, 0, 0, 0);
+      return encodeR(opEnc, 0, 0, 0, 0, 0);
     case Op::ADD:
     case Op::SUB:
     case Op::OR:
@@ -252,15 +279,15 @@ public:
     }
   }
 
-  constexpr RISCSInstr(Op op, Reg rd, Reg rs1, Reg rs2, std::optional<std::int32_t> imm)
+  constexpr RISCSInstr(Op op, Reg rd, Reg rs1, Reg rs2,
+                       std::optional<std::int32_t> imm)
       : op(op), rd(rd), rs1(rs1), rs2(rs2), imm(imm) {}
 
   constexpr RISCSInstr(Op op, Reg rd, Reg rs1, Reg rs2)
-      : op(op), rd(rd), rs1(rs1), rs2(rs2), imm({}){}
+      : op(op), rd(rd), rs1(rs1), rs2(rs2), imm({}) {}
 
   constexpr RISCSInstr(Op op, Reg rd, Reg rs1, std::int32_t imm)
-      : op(op), rd(rd), rs1(rs1), rs2(Reg::NONE), imm({imm}){}
-
+      : op(op), rd(rd), rs1(rs1), rs2(Reg::NONE), imm({imm}) {}
 
 private:
   Op op;
@@ -270,6 +297,11 @@ private:
   std::optional<std::int32_t> imm;
 
   static constexpr std::uint32_t nbits(int n) { return (1U << n) - 1; }
+
+  static constexpr bool truncateable(std::int32_t v, int n) {
+    std::uint32_t trunc = (v & ~nbits(n - 1));
+    return trunc == 0 || trunc == ~nbits(n - 1);
+  }
 };
 
 class RISCSInstrBuilder {

@@ -22,30 +22,27 @@ module ExecuteStage (
 
   val_t aluOut;
 
-  val_t s1;
-  val_t s2;
+  val_t s1Bypass;
+  val_t s2Bypass;
 
   always_comb begin
-      if (d.valid && currUop.rs1 == uopOut.rd) begin
-          s1 = uopOut.rdVal;
-      end else begin
-          s1 = currUop.rs2val;
-      end
-
-      if (currUop.immValid) begin
-          s2 = currUop.imm;
-      end else if (d.valid && currUop.rs2 == uopOut.rd) begin
-          s2 = uopOut.rdVal;
-      end else begin
-          s2 = currUop.rs2val;
-      end
+    if (d.valid && currUop.rs1 == uopOut.rd && !uopOut.memOp.en) begin
+      s1Bypass = uopOut.rdVal;
+    end else begin
+      s1Bypass = currUop.rs1Val;
+    end
+    if (d.valid && currUop.rs2 == uopOut.rd && !uopOut.memOp.en) begin
+      s2Bypass = uopOut.rdVal;
+    end else begin
+      s2Bypass = currUop.rs2Val;
+    end
   end
 
   IntALU m_alu (
       .op(currUop.op.intalu),
-      .s1(s1),
-      .s2(s2),
-      .d(aluOut)
+      .s1(s1Bypass),
+      .s2(currUop.immValid ? currUop.imm : s2Bypass),
+      .d (aluOut)
   );
 
   always_ff @(posedge clk) begin
@@ -62,9 +59,11 @@ module ExecuteStage (
         stalledUopValid <= currUopValid;
       end else begin
         stallBufferValid <= 0;
+        d.valid <= currUopValid;
         uopOut.ex <= currUop.ex;
         uopOut.rd <= currUop.rd;
-        d.valid <= currUopValid;
+        uopOut.rs2Val <= s2Bypass;
+        uopOut.memOp <= currUop.memOp;
 
         case (currUop.fu)
           FU_INTALU: begin

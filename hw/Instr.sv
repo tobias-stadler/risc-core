@@ -62,6 +62,7 @@ package Instr;
     imm_s7_t imm7;
     reg_t rs2;
     reg_t rs1;
+    funct3_t funct3;
     imm_s5_t imm5;
     op_t op;
   } enc_s_t;
