@@ -15,12 +15,21 @@
 
 int main() {
 
-  using IB = RISCSInstrBuilder;
+  using namespace RISCS;
+  using R = Reg;
 
-  std::vector<RISCSInstr> instrs{
-      IB::Add(IB::Reg::X12, IB::Reg::X0, -400),
-      IB::Shra(IB::Reg::X13, IB::Reg::X12, 2),
-      IB::Add(IB::Reg::X11, IB::Reg::X13, 3),
+  std::vector<Instr> instrs{
+      Add(R::X1, R::X0, 0x40),
+      Add(R::X2, R::X0, 0x50),
+      Stw(R::X1, 4, R::X2),
+      Stw(R::X1, 4, R::X2),
+      Stw(R::X1, 4, R::X2),
+      Stw(R::X1, 4, R::X2),
+      Stw(R::X1, 4, R::X2),
+      Stw(R::X1, 4, R::X2),
+      Stw(R::X1, 4, R::X2),
+      Stw(R::X1, 4, R::X2),
+      Stw(R::X1, 4, R::X2),
   };
   std::cout << "Running verilated model...\n";
 
@@ -30,15 +39,19 @@ int main() {
   tb.reset();
 
   VPlaygroundTB &m = tb.getModel();
-  for (const RISCSInstr &in : instrs) {
+  for (const Instr &in : instrs) {
     std::uint32_t inEnc = in.encode();
-    std::cout<< std::hex << inEnc << "\n";
+    std::cout << std::hex << inEnc << std::endl;
+    while (m.stall) {
+      tb.cycle();
+      std::cout << "stalled" << std::endl;
+    }
     m.instr = inEnc;
     m.valid = 1;
     tb.cycle();
   }
   m.valid = 0;
-  tb.runUntil(20);
+  tb.runUntil(100);
 
   std::cout << "Done\n";
   return EXIT_SUCCESS;

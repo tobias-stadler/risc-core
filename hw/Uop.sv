@@ -1,13 +1,26 @@
 package Uop;
   typedef logic [4:0] reg_t;
+  typedef logic [29:0] waddr_t;
+  typedef logic [30:0] haddr_t;
+  typedef logic [31:0] baddr_t;
   typedef logic [29:0] iaddr_t;
   typedef logic [31:0] val_t;
+  typedef logic [31:0] w_t;
+  typedef logic [15:0] hw_t;
+  typedef logic [7:0] b_t;
   typedef logic [31:0] imm_t;
 
   typedef enum logic [2:0] {
     FU_NONE,
     FU_INTALU
   } fu_t;
+
+  typedef struct packed {
+    logic v;
+    logic c;
+    logic s;
+    logic z;
+  } flags_t;
 
   typedef enum logic [2:0] {
     INTALU_OP_ADD,
@@ -57,7 +70,8 @@ package Uop;
   } ex_t;
 
   typedef struct packed {
-    iaddr_t pc;
+    logic br;
+    logic brTaken;
     Instr::enc_t enc;
   } fetch_t;
 
@@ -73,6 +87,7 @@ package Uop;
     logic immValid;
     imm_t imm;
     mem_op_t memOp;
+    logic flagsValid;
   } decode_t;
 
   typedef struct packed {
@@ -81,12 +96,16 @@ package Uop;
     val_t rdVal;
     val_t rs2Val;
     mem_op_t memOp;
+    logic flagsValid;
+    flags_t flags;
   } execute_t;
 
   typedef struct packed {
     ex_t  ex;
     reg_t rd;
     val_t rdVal;
+    logic flagsValid;
+    flags_t flags;
   } memory_t;
 
   typedef struct packed {
@@ -99,6 +118,7 @@ package Uop;
     logic immValid;
     imm_t imm;
     mem_op_t memOp;
+    logic flagsValid;
   } dec_t;
 
 endpackage

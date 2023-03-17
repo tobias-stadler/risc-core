@@ -11,18 +11,20 @@ module Decoder (
 
   always_comb begin
     dec.ex = Uop::EX_NONE;
-    dec.rd = 0;
-    dec.rs1 = 0;
-    dec.rs2 = 0;
-    dec.immValid = 0;
-    dec.imm = 0;
+    dec.rd = '0;
+    dec.rs1 = '0;
+    dec.rs2 = '0;
+    dec.immValid = '0;
+    dec.imm = '0;
     dec.fu = Uop::FU_NONE;
-    dec.op = 0;
-    dec.memOp = 0;
+    dec.op = '0;
+    dec.memOp = '0;
+    dec.flagsValid = '0;
     case (enc.op.op)
       Instr::OP_NOP:;
       Instr::OP_ARITH, Instr::OP_ARITHI: begin
         dec.fu = Uop::FU_INTALU;
+        dec.flagsValid = '1;
         case (enc.r.funct3)
           Instr::OP_ARITH_ADD: dec.op.intalu = Uop::INTALU_OP_ADD;
           Instr::OP_ARITH_SUB: dec.op.intalu = Uop::INTALU_OP_SUB;

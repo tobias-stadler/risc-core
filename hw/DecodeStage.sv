@@ -56,6 +56,7 @@ module DecodeStage (
         uopOut.imm <= uopDec.imm;
         uopOut.immValid <= uopDec.immValid;
         uopOut.memOp <= uopDec.memOp;
+        uopOut.flagsValid <= uopDec.flagsValid;
       end
     end
   end

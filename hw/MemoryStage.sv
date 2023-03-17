@@ -1,77 +1,90 @@
 module MemoryStage #(
-    parameter int OFFSET_BITS = 4,
-    parameter int SET_BITS = 5,
-    parameter int TAG_BITS = 32 - SET_BITS - OFFSET_BITS
 ) (
     input logic clk,
     input logic rst,
     pipeline_if.Upstream u,
     pipeline_if.Downstream d,
     input Uop::execute_t uopIn,
-    output Uop::memory_t uopOut
+    output Uop::memory_t uopOut,
+    bypass_if.Subject bypass,
+    l1dcache_core_if.Client cache
 );
 
   import Uop::*;
 
-
-  typedef logic [TAG_BITS-1:0] tag_t;
-  typedef logic [SET_BITS-1:0] set_t;
-  typedef logic [OFFSET_BITS-1:0] offset_t;
-
-  typedef logic [7:0] b_t;
-  typedef logic [15:0] hw_t;
-
-  typedef union packed {
-    logic [31:0] raw;
-    hw_t[1:0] hw;
-    b_t[3:0] b;
-  } w_t;
-
-  typedef union packed {
-    logic [127:0] raw;
-    w_t[3:0] w;
-  } line_t;
-
-  typedef struct packed {
-    logic valid;
-    tag_t tag;
-  } entry_t;
+  assign bypass.rValid = d.valid; //TODO only valid on load or no memop
+  assign bypass.r = uopOut.rd;
+  assign bypass.rVal = uopOut.rdVal;
+  assign bypass.flagsValid = d.valid & uopOut.flagsValid;
 
   execute_t currUop;
   assign currUop = uopIn;
 
-  offset_t offset;
-  assign offset = currUop.rdVal[0+:OFFSET_BITS];
-  set_t set;
-  assign set = currUop.rdVal[OFFSET_BITS+:SET_BITS];
-  tag_t tag;
-  assign tag = currUop.rdVal[OFFSET_BITS+SET_BITS+:TAG_BITS];
+  assign cache.kill = '0;
+  assign cache.addr = '0;
+  assign cache.reqData = '0;
 
-  entry_t meta[2**SET_BITS];
-  line_t  line[2**SET_BITS];
+
+  //TODO kill store request on exception/miss
+  always_comb begin
+    cache.en = '0;
+    cache.enW = '0;
+    cache.addr = currUop.rdVal[31:2];
+    cache.reqData = currUop.rs2Val;
+    if (u.valid & currUop.memOp.en) begin
+      cache.en = '1;
+      if (currUop.memOp.isSt) begin
+        cache.enW = '1;
+      end
+    end
+    unique case (currUop.memOp.sz)
+      MEM_OP_SZ_B: begin
+        cache.mask = 4'b0001; //TODO alignment
+      end
+      MEM_OP_SZ_H: begin
+        cache.mask = 4'b0011;
+      end
+      MEM_OP_SZ_W: begin
+        cache.mask = 4'b1111;
+      end
+      default: cache.mask = '0;
+    endcase
+  end
+
+  /*
+  val_t rdVal;
+  logic selectCache;
+
+  always_comb begin
+      if(selectCache) begin
+          uopOut.rdVal = cache.respData;
+      end else begin
+          uopOut.rdVal = rdVal;
+      end
+  end*/
+
+  //TODO remove
+  wire _unused_ok = &{1'b0, cache.respData, cache.hit, 1'b0};
 
   always_ff @(posedge clk) begin
     if (rst) begin
       u.stall <= 0;
       d.valid <= 0;
-      uopOut <= 0;
-      meta <= '{default: 0};
     end else begin
       d.valid <= u.valid;
       uopOut.ex <= currUop.ex;
       uopOut.rd <= currUop.rd;
       uopOut.rdVal <= currUop.rdVal;
+      uopOut.flags <= currUop.flags;
+      uopOut.flagsValid <= currUop.flagsValid;
+      //selectCache <= currUop.memOp.en && !currUop.memOp.isSt;
 
-      if (u.valid && currUop.memOp.en) begin
-        entry_t e = meta[set];
-        logic [1:0] wIdx = offset[3:2];
+      /*      if (u.valid && currUop.memOp.en && currUop.ex == EX_NONE) begin
         if (e.valid && tag == e.tag) begin
           case (currUop.memOp.sz)
             MEM_OP_SZ_B: begin
               if (currUop.memOp.isSt) begin
-                line[set].w[wIdx].b[offset[1:0]] <= currUop.rs2Val[7:0];
               end else begin
-                b_t b = line[set].w[wIdx].b[offset[1:0]];
                 if (currUop.memOp.signExtend) uopOut.rdVal <= {{24{b[7]}}, b};
                 else uopOut.rdVal <= {{24{1'b0}}, b};
               end
@@ -106,6 +119,7 @@ module MemoryStage #(
           uopOut.ex <= EX_MEM_MISS;
         end
       end
+    */
     end
   end
 

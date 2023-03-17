@@ -6,8 +6,6 @@ module RegisterFile (
     regfile_read_if.Server read1
 );
 
-  //TODO maybe move to blockram (probably not possible)
-  // TODO maybe make 32 if decrement logic gets weird synthesis
   Uop::val_t ram[32];
 
   always_ff @(posedge clk) begin

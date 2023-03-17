@@ -5,7 +5,8 @@ module PlaygroundTB (
     input logic clk,
     input logic rst,
     input Uop::fetch_t instr,
-    input logic valid
+    input logic valid,
+    output logic stall
 );
 
   regfile_read_if read0;
@@ -16,6 +17,11 @@ module PlaygroundTB (
   pipeline_if if_decode;
   pipeline_if if_exec;
   pipeline_if if_mem;
+
+  bypass_if if_memBypass;
+  bypass_if if_wbBypass;
+
+  l1dcache_core_if if_l1dCore;
 
   Uop::fetch_t instrFetch;
   Uop::decode_t instrDec;
@@ -28,6 +34,12 @@ module PlaygroundTB (
       .read0(read0),
       .read1(read1),
       .write0(write0)
+  );
+
+  L1DCache m_l1dcache (
+      .clk (clk),
+      .rst (rst),
+      .core(if_l1dCore)
   );
 
   DecodeStage m_decodeStage (
@@ -47,7 +59,9 @@ module PlaygroundTB (
       .u(if_decode),
       .d(if_exec),
       .uopIn(instrDec),
-      .uopOut(instrExec)
+      .uopOut(instrExec),
+      .memBypass(if_memBypass),
+      .wbBypass(if_wbBypass)
   );
 
   MemoryStage m_memStage (
@@ -56,7 +70,9 @@ module PlaygroundTB (
       .u(if_exec),
       .d(if_mem),
       .uopIn(instrExec),
-      .uopOut(instrMem)
+      .uopOut(instrMem),
+      .bypass(if_memBypass),
+      .cache(if_l1dCore)
   );
 
   WriteBackStage m_wbStage (
@@ -64,9 +80,12 @@ module PlaygroundTB (
       .rst(rst),
       .u(if_mem),
       .uopIn(instrMem),
-      .write0(write0)
+      .write0(write0),
+      .bypass(if_wbBypass)
+
   );
 
   assign instrFetch = instr;
   assign if_fetch.valid = valid;
+  assign stall = if_fetch.stall;
 endmodule

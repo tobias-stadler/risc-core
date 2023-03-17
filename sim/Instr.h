@@ -2,78 +2,84 @@
 
 #include <bitset>
 #include <cstdint>
+#include <exception>
 #include <iostream>
 #include <optional>
 #include <stdexcept>
 
-class RISCSInstr {
+namespace RISCS {
+class encoding_error : public std::runtime_error {
+  using std::runtime_error::runtime_error;
+};
+
+enum class Op {
+  INVALID,
+  NOP,
+  ADD,
+  ADDI,
+  SUB,
+  SUBI,
+  OR,
+  ORI,
+  AND,
+  ANDI,
+  XOR,
+  XORI,
+  SHL,
+  SHLI,
+  SHR,
+  SHRI,
+  SHRA,
+  SHRAI,
+  LDB,
+  LDH,
+  LDW,
+  LDBS,
+  LDHS,
+  STB,
+  STH,
+  STW
+};
+
+enum class Reg {
+  NONE,
+  INVALID,
+  X0,
+  X1,
+  X2,
+  X3,
+  X4,
+  X5,
+  X6,
+  X7,
+  X8,
+  X9,
+  X10,
+  X11,
+  X12,
+  X13,
+  X14,
+  X15,
+  X16,
+  X17,
+  X18,
+  X19,
+  X20,
+  X21,
+  X22,
+  X23,
+  X24,
+  X25,
+  X26,
+  X27,
+  X28,
+  X29,
+  X30,
+  X31
+};
+
+class Instr {
 public:
-  enum class Op {
-    INVALID,
-    NOP,
-    ADD,
-    ADDI,
-    SUB,
-    SUBI,
-    OR,
-    ORI,
-    AND,
-    ANDI,
-    XOR,
-    XORI,
-    SHL,
-    SHLI,
-    SHR,
-    SHRI,
-    SHRA,
-    SHRAI,
-    LDB,
-    LDH,
-    LDW,
-    LDBS,
-    LDHS,
-    STB,
-    STH,
-    STW
-  };
-
-  enum class Reg {
-    INVALID,
-    NONE,
-    X0,
-    X1,
-    X2,
-    X3,
-    X4,
-    X5,
-    X6,
-    X7,
-    X8,
-    X9,
-    X10,
-    X11,
-    X12,
-    X13,
-    X14,
-    X15,
-    X16,
-    X17,
-    X18,
-    X19,
-    X20,
-    X21,
-    X22,
-    X23,
-    X24,
-    X25,
-    X26,
-    X27,
-    X28,
-    X29,
-    X30,
-    X31
-  };
-
   enum class Cond { Z, NZ, C, NC, S, NS, OF, NOF, LT, LE, GT, GE };
 
   static constexpr std::uint8_t encodeReg(Reg reg) {
@@ -143,7 +149,7 @@ public:
     case Reg::X31:
       return 31;
     default:
-      throw std::invalid_argument("Invalid register cannot be encoded");
+      throw encoding_error("Invalid register cannot be encoded");
     }
   }
 
@@ -175,8 +181,43 @@ public:
     case Op::LDBS:
     case Op::LDHS:
       return 0b0000011;
+    case Op::STB:
+    case Op::STH:
+    case Op::STW:
+      return 0b0100011;
     default:
-      throw std::invalid_argument("Invalid operation cannot be encoded");
+      throw encoding_error("Invalid operation cannot be encoded");
+    }
+  }
+
+  static constexpr std::uint8_t encodeLdOp(Op op) {
+    switch (op) {
+
+    case Op::LDB:
+      return 0b000;
+    case Op::LDH:
+      return 0b001;
+    case Op::LDW:
+      return 0b010;
+    case Op::LDBS:
+      return 0b100;
+    case Op::LDHS:
+      return 0b101;
+    default:
+      throw encoding_error("Non-load operation cannot be encoded as load");
+    }
+  }
+
+  static constexpr std::uint8_t encodeStOp(Op op) {
+    switch (op) {
+    case Op::STB:
+      return 0b000;
+    case Op::STH:
+      return 0b001;
+    case Op::STW:
+      return 0b010;
+    default:
+      throw encoding_error("Non-store operation cannot be encoded as store");
     }
   }
 
@@ -207,7 +248,7 @@ public:
     case Op::SHRAI:
       return 0b111;
     default:
-      throw std::invalid_argument(
+      throw encoding_error(
           "Non-artihmetic operation cannot be encoded as arithmetic");
     }
   }
@@ -226,7 +267,7 @@ public:
                                          std::uint8_t funct3, std::uint8_t rs1,
                                          std::int32_t imm) {
     if (!truncateable(imm, 12)) {
-      throw std::invalid_argument("Immediate would overflow");
+      throw encoding_error("Immediate would overflow");
     }
 
     std::uint32_t instr = (op & nbits(6)) | (rd & nbits(5)) << 7 |
@@ -239,7 +280,7 @@ public:
                                          std::uint8_t rs1, std::uint8_t rs2,
                                          std::int32_t imm) {
     if (!truncateable(imm, 12)) {
-      throw std::invalid_argument("Immediate would overflow");
+      throw encoding_error("Immediate would overflow");
     }
 
     std::uint32_t instr = (op & nbits(6)) | (imm & nbits(5)) << 7 |
@@ -274,19 +315,31 @@ public:
     case Op::SHRAI:
       return encodeI(opEnc, encodeReg(rd), encodeArithOp(op), encodeReg(rs1),
                      imm.value());
+    case Op::LDB:
+    case Op::LDH:
+    case Op::LDW:
+    case Op::LDBS:
+    case Op::LDHS:
+      return encodeI(opEnc, encodeReg(rd), encodeLdOp(op), encodeReg(rs1),
+                     imm.value());
+    case Op::STB:
+    case Op::STH:
+    case Op::STW:
+      return encodeS(opEnc, encodeStOp(op), encodeReg(rs1), encodeReg(rs2),
+                     imm.value());
     default:
-      throw std::invalid_argument("Invalid instruction cannot be encoded");
+      throw encoding_error("Invalid opcode cannot be encoded");
     }
   }
 
-  constexpr RISCSInstr(Op op, Reg rd, Reg rs1, Reg rs2,
-                       std::optional<std::int32_t> imm)
+  constexpr Instr(Op op, Reg rd, Reg rs1, Reg rs2,
+                  std::optional<std::int32_t> imm)
       : op(op), rd(rd), rs1(rs1), rs2(rs2), imm(imm) {}
 
-  constexpr RISCSInstr(Op op, Reg rd, Reg rs1, Reg rs2)
+  constexpr Instr(Op op, Reg rd, Reg rs1, Reg rs2)
       : op(op), rd(rd), rs1(rs1), rs2(rs2), imm({}) {}
 
-  constexpr RISCSInstr(Op op, Reg rd, Reg rs1, std::int32_t imm)
+  constexpr Instr(Op op, Reg rd, Reg rs1, std::int32_t imm)
       : op(op), rd(rd), rs1(rs1), rs2(Reg::NONE), imm({imm}) {}
 
 private:
@@ -299,81 +352,110 @@ private:
   static constexpr std::uint32_t nbits(int n) { return (1U << n) - 1; }
 
   static constexpr bool truncateable(std::int32_t v, int n) {
+    if (n < 1)
+      throw std::invalid_argument("Number of remaining bits must be >= 1");
     std::uint32_t trunc = (v & ~nbits(n - 1));
     return trunc == 0 || trunc == ~nbits(n - 1);
   }
 };
 
-class RISCSInstrBuilder {
-public:
-  using Reg = RISCSInstr::Reg;
-  using Op = RISCSInstr::Op;
+constexpr Instr Nop(Reg rd, Reg rs1, Reg rs2) {
+  return Instr{Op::NOP, Reg::NONE, Reg::NONE, Reg::NONE};
+}
 
-  static constexpr RISCSInstr Nop(Reg rd, Reg rs1, Reg rs2) {
-    return RISCSInstr{Op::NOP, Reg::NONE, Reg::NONE, Reg::NONE, 0};
-  }
+constexpr Instr Add(Reg rd, Reg rs1, Reg rs2) {
+  return Instr{Op::ADD, rd, rs1, rs2};
+}
 
-  static constexpr RISCSInstr Add(Reg rd, Reg rs1, Reg rs2) {
-    return RISCSInstr{Op::ADD, rd, rs1, rs2, 0};
-  }
+constexpr Instr Add(Reg rd, Reg rs1, std::int32_t imm) {
+  return Instr{Op::ADDI, rd, rs1, imm};
+}
 
-  static constexpr RISCSInstr Add(Reg rd, Reg rs1, std::int32_t imm) {
-    return RISCSInstr{Op::ADDI, rd, rs1, Reg::INVALID, imm};
-  }
+constexpr Instr Sub(Reg rd, Reg rs1, Reg rs2) {
+  return Instr{Op::SUB, rd, rs1, rs2};
+}
 
-  static constexpr RISCSInstr Sub(Reg rd, Reg rs1, Reg rs2) {
-    return RISCSInstr{Op::SUB, rd, rs1, rs2, 0};
-  }
+constexpr Instr Sub(Reg rd, Reg rs1, std::int32_t imm) {
+  return Instr{Op::SUBI, rd, rs1, imm};
+}
 
-  static constexpr RISCSInstr Sub(Reg rd, Reg rs1, std::int32_t imm) {
-    return RISCSInstr{Op::SUBI, rd, rs1, Reg::INVALID, imm};
-  }
+constexpr Instr Or(Reg rd, Reg rs1, Reg rs2) {
+  return Instr{Op::OR, rd, rs1, rs2};
+}
 
-  static constexpr RISCSInstr Or(Reg rd, Reg rs1, Reg rs2) {
-    return RISCSInstr{Op::OR, rd, rs1, rs2, 0};
-  }
+constexpr Instr Or(Reg rd, Reg rs1, std::int32_t imm) {
+  return Instr{Op::ORI, rd, rs1, imm};
+}
 
-  static constexpr RISCSInstr Or(Reg rd, Reg rs1, std::int32_t imm) {
-    return RISCSInstr{Op::ORI, rd, rs1, Reg::INVALID, imm};
-  }
+constexpr Instr And(Reg rd, Reg rs1, Reg rs2) {
+  return Instr{Op::AND, rd, rs1, rs2};
+}
 
-  static constexpr RISCSInstr And(Reg rd, Reg rs1, Reg rs2) {
-    return RISCSInstr{Op::AND, rd, rs1, rs2, 0};
-  }
+constexpr Instr And(Reg rd, Reg rs1, std::int32_t imm) {
+  return Instr{Op::ANDI, rd, rs1, imm};
+}
 
-  static constexpr RISCSInstr And(Reg rd, Reg rs1, std::int32_t imm) {
-    return RISCSInstr{Op::ANDI, rd, rs1, Reg::INVALID, imm};
-  }
+constexpr Instr Xor(Reg rd, Reg rs1, Reg rs2) {
+  return Instr{Op::XOR, rd, rs1, rs2};
+}
 
-  static constexpr RISCSInstr Xor(Reg rd, Reg rs1, Reg rs2) {
-    return RISCSInstr{Op::XOR, rd, rs1, rs2, 0};
-  }
+constexpr Instr Xor(Reg rd, Reg rs1, std::int32_t imm) {
+  return Instr{Op::XORI, rd, rs1, imm};
+}
 
-  static constexpr RISCSInstr Xor(Reg rd, Reg rs1, std::int32_t imm) {
-    return RISCSInstr{Op::XORI, rd, rs1, Reg::INVALID, imm};
-  }
+constexpr Instr Shl(Reg rd, Reg rs1, Reg rs2) {
+  return Instr{Op::SHL, rd, rs1, rs2};
+}
 
-  static constexpr RISCSInstr Shl(Reg rd, Reg rs1, Reg rs2) {
-    return RISCSInstr{Op::SHL, rd, rs1, rs2, 0};
-  }
+constexpr Instr Shl(Reg rd, Reg rs1, std::int32_t imm) {
+  return Instr{Op::SHLI, rd, rs1, imm};
+}
 
-  static constexpr RISCSInstr Shl(Reg rd, Reg rs1, std::int32_t imm) {
-    return RISCSInstr{Op::SHLI, rd, rs1, Reg::INVALID, imm};
-  }
+constexpr Instr Shr(Reg rd, Reg rs1, Reg rs2) {
+  return Instr{Op::SHR, rd, rs1, rs2};
+}
 
-  static constexpr RISCSInstr Shr(Reg rd, Reg rs1, Reg rs2) {
-    return RISCSInstr{Op::SHR, rd, rs1, rs2, 0};
-  }
+constexpr Instr Shr(Reg rd, Reg rs1, std::int32_t imm) {
+  return Instr{Op::SHRI, rd, rs1, imm};
+}
 
-  static constexpr RISCSInstr Shr(Reg rd, Reg rs1, std::int32_t imm) {
-    return RISCSInstr{Op::SHRI, rd, rs1, Reg::INVALID, imm};
-  }
+constexpr Instr Shra(Reg rd, Reg rs1, Reg rs2) {
+  return Instr{Op::SHRA, rd, rs1, rs2};
+}
 
-  static constexpr RISCSInstr Shra(Reg rd, Reg rs1, Reg rs2) {
-    return RISCSInstr{Op::SHRA, rd, rs1, rs2, 0};
-  }
+constexpr Instr Shra(Reg rd, Reg rs1, std::int32_t imm) {
+  return Instr{Op::SHRAI, rd, rs1, imm};
+}
 
-  static constexpr RISCSInstr Shra(Reg rd, Reg rs1, std::int32_t imm) {
-    return RISCSInstr{Op::SHRAI, rd, rs1, Reg::INVALID, imm};
-  }
-};
+constexpr Instr Ldb(Reg rd, Reg base, std::int32_t offset) {
+  return Instr{Op::LDB, rd, base, offset};
+}
+
+constexpr Instr Ldh(Reg rd, Reg base, std::int32_t offset) {
+  return Instr{Op::LDH, rd, base, offset};
+}
+
+constexpr Instr Ldw(Reg rd, Reg base, std::int32_t offset) {
+  return Instr{Op::LDW, rd, base, offset};
+}
+
+constexpr Instr Ldbs(Reg rd, Reg base, std::int32_t offset) {
+  return Instr{Op::LDBS, rd, base, offset};
+}
+
+constexpr Instr Ldhs(Reg rd, Reg base, std::int32_t offset) {
+  return Instr{Op::LDHS, rd, base, offset};
+}
+
+constexpr Instr Stb(Reg base, std::int32_t offset, Reg val) {
+  return Instr{Op::STB, Reg::NONE, base, val, offset};
+}
+
+constexpr Instr Sth(Reg base, std::int32_t offset, Reg val) {
+  return Instr{Op::STH, Reg::NONE, base, val, offset};
+}
+
+constexpr Instr Stw(Reg base, std::int32_t offset, Reg val) {
+  return Instr{Op::STW, Reg::NONE, base, val, offset};
+}
+}; // namespace RISCS
