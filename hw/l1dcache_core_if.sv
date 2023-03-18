@@ -2,13 +2,12 @@ interface l1dcache_core_if;
   logic en;
   logic enW;
   logic [3:0] mask;
-  logic kill;
   Uop::waddr_t addr;
   Uop::w_t reqData;
   Uop::w_t respData;
-  logic hit;
+  logic nack;
 
-  modport Server(input en, enW, mask, kill, addr, reqData, output respData, hit);
+  modport Server(input en, enW, mask, addr, reqData, output respData, nack);
 
-  modport Client(input respData, hit, output en, enW, mask, kill, addr, reqData);
+  modport Client(input respData, nack, output en, enW, mask, addr, reqData);
 endinterface

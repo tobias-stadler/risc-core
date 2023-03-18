@@ -46,6 +46,7 @@ module DecodeStage (
 
         d.valid <= currUopValid;
         uopOut.ex <= uopDec.ex;
+        uopOut.exValid <= uopDec.exValid;
         uopOut.fu <= uopDec.fu;
         uopOut.op <= uopDec.op;
         uopOut.rd <= uopDec.rd;

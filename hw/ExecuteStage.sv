@@ -44,7 +44,7 @@ module ExecuteStage (
   always_comb begin
     if (currUop.rs1 == 0) begin
       s1Bypass = 0;
-    end else if (d.valid && currUop.rs1 == uopOut.rd && !uopOut.memOp.en) begin
+    end else if (d.valid && currUop.rs1 == uopOut.rd && !uopOut.memOp.isLd && !uopOut.memOp.isSt) begin
       s1Bypass = uopOut.rdVal;
     end else if (memBypass.rValid && currUop.rs1 == memBypass.r) begin
       s1Bypass = memBypass.rVal;
@@ -56,7 +56,7 @@ module ExecuteStage (
 
     if (currUop.rs2 == 0) begin
       s2Bypass = 0;
-    end else if (d.valid && currUop.rs2 == uopOut.rd && !uopOut.memOp.en) begin
+    end else if (d.valid && currUop.rs2 == uopOut.rd && !uopOut.memOp.isLd && !uopOut.memOp.isSt) begin
       s2Bypass = uopOut.rdVal;
     end else if (memBypass.rValid && currUop.rs2 == memBypass.r) begin
       s2Bypass = memBypass.rVal;
@@ -76,12 +76,10 @@ module ExecuteStage (
   );
 
   //TODO remove
-  wire _unused_ok = &{1'b0,
-      flagsBypass,
-      1'b0};
+  wire _unused_ok = &{1'b0, flagsBypass};
 
   logic shouldStall;
-  assign shouldStall = d.valid && uopOut.memOp.en && !uopOut.memOp.isSt &&
+  assign shouldStall = d.valid && uopOut.memOp.isLd &&
       (uopOut.rd == currUop.rs1 || uopOut.rd == currUop.rs2) && uopOut.rd != 0;
 
   always_ff @(posedge clk) begin
@@ -98,6 +96,7 @@ module ExecuteStage (
         stallBufferValid <= 0;
         d.valid <= currUopValid;
         uopOut.ex <= currUop.ex;
+        uopOut.exValid <= currUop.exValid;
         uopOut.rd <= currUop.rd;
         uopOut.rs2Val <= s2Bypass;
         uopOut.memOp <= currUop.memOp;

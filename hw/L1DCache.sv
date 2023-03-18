@@ -80,9 +80,9 @@ module L1DCache #(
   always_comb begin
     logic lineValid = entry.valid && entry.tag == tagHold;
     if (isStHold) begin
-      core.hit = ~stFail;
+      core.nack = stFail;
     end else begin
-      core.hit = forwardPresent ? forwardLegal : lineValid;
+      core.nack = !(forwardPresent ? forwardLegal : lineValid);
     end
     if (forwardPresent) begin
       core.respData = forwardData;
@@ -105,7 +105,7 @@ module L1DCache #(
   end
 
   //TODO remove
-  wire _unused_ok = &{1'b0, core.kill, lfb[0], 1'b0};
+  wire _unused_ok = &{1'b0, lfb[0], 1'b0};
   always_ff @(posedge clk) begin
     if (rst) begin
       for (int i = 0; i < SETS; i++) begin

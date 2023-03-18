@@ -28,6 +28,8 @@ module PlaygroundTB (
   Uop::execute_t instrExec;
   Uop::memory_t instrMem;
 
+  logic flush;
+
   RegisterFile m_regFile (
       .clk(clk),
       .rst(rst),
@@ -44,7 +46,7 @@ module PlaygroundTB (
 
   DecodeStage m_decodeStage (
       .clk(clk),
-      .rst(rst),
+      .rst(rst|flush),
       .u(if_fetch),
       .d(if_decode),
       .read0(read0),
@@ -55,7 +57,7 @@ module PlaygroundTB (
 
   ExecuteStage m_execStage (
       .clk(clk),
-      .rst(rst),
+      .rst(rst|flush),
       .u(if_decode),
       .d(if_exec),
       .uopIn(instrDec),
@@ -66,7 +68,7 @@ module PlaygroundTB (
 
   MemoryStage m_memStage (
       .clk(clk),
-      .rst(rst),
+      .rst(rst|flush),
       .u(if_exec),
       .d(if_mem),
       .uopIn(instrExec),
@@ -81,8 +83,8 @@ module PlaygroundTB (
       .u(if_mem),
       .uopIn(instrMem),
       .write0(write0),
-      .bypass(if_wbBypass)
-
+      .bypass(if_wbBypass),
+      .flush(flush)
   );
 
   assign instrFetch = instr;

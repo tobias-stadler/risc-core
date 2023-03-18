@@ -33,20 +33,6 @@ package Uop;
     INTALU_OP_SHRA
   } intalu_op_t;
 
-  /*
-  typedef enum logic [5:0] {
-    MEM_NONE = 5'b00000,
-    MEM_STW = 5'b11000,
-    MEM_STHW = 5'b10100,
-    MEM_STB = 5'b10010,
-    MEM_LDW = 5'b01000,
-    MEM_LDHW = 5'b00100,
-    MEM_LDB = 5'b00010,
-    MEM_LDHW_SIGNED = 5'b00101,
-    MEM_LDB_SIGNED = 5'b00011
-  } mem_op_e;
-  */
-
   typedef enum logic [1:0] {
     MEM_OP_SZ_B,
     MEM_OP_SZ_H,
@@ -54,7 +40,7 @@ package Uop;
   } mem_op_sz_t;
 
   typedef struct packed {
-    logic en;
+    logic isLd;
     logic isSt;
     logic signExtend;
     mem_op_sz_t sz;
@@ -62,10 +48,8 @@ package Uop;
 
   typedef union packed {intalu_op_t intalu;} fu_op_t;
 
-  typedef enum logic [1:0] {
-    EX_NONE,
+  typedef enum logic [2:0] {
     EX_DECODE,
-    EX_MEM_MISS,
     EX_MEM_ALIGN
   } ex_t;
 
@@ -77,6 +61,7 @@ package Uop;
 
   typedef struct packed {
     ex_t ex;
+    logic exValid;
     fu_t fu;
     fu_op_t op;
     reg_t rd;
@@ -92,6 +77,7 @@ package Uop;
 
   typedef struct packed {
     ex_t ex;
+    logic exValid;
     reg_t rd;
     val_t rdVal;
     val_t rs2Val;
@@ -102,14 +88,17 @@ package Uop;
 
   typedef struct packed {
     ex_t  ex;
+    logic exValid;
     reg_t rd;
     val_t rdVal;
     logic flagsValid;
     flags_t flags;
+    logic memNack;
   } memory_t;
 
   typedef struct packed {
     ex_t ex;
+    logic exValid;
     fu_t fu;
     fu_op_t op;
     reg_t rd;
