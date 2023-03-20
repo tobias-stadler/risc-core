@@ -1,8 +1,6 @@
 module L1DCache #(
-    parameter int OFFSET_BITS = 2,
     parameter int SET_BITS = 5,
-    parameter int ADDR_BITS = 30,
-    parameter int STQ_SZ_EXP = 3,
+    parameter int WAYS = 2,
     parameter int LFB_SZ = 8
 ) (
     input logic clk,
@@ -10,14 +8,34 @@ module L1DCache #(
     l1dcache_core_if.Server core
 );
 
-
-  localparam int STQ_SZ = 2 ** STQ_SZ_EXP;
+  localparam int OFFSET_BITS = 2;
+  localparam int ADDR_BITS = 30;
   localparam int TAG_BITS = ADDR_BITS - SET_BITS - OFFSET_BITS;
   localparam int SETS = 2 ** SET_BITS;
+
+  localparam int LFB_PTR_BITS = $clog2(LFB_SZ);
+  localparam int WAY_PTR_BITS = $clog2(WAYS);
 
   typedef logic [TAG_BITS-1:0] tag_t;
   typedef logic [SET_BITS-1:0] set_t;
   typedef logic [OFFSET_BITS-1:0] offset_t;
+
+  typedef logic [WAY_PTR_BITS-1:0] way_ptr_t;
+  typedef logic [LFB_PTR_BITS-1:0] lfb_ptr_t;
+
+  typedef struct packed {
+    logic [WAYS-1:0] valid;
+    tag_t [WAYS-1:0] tag;
+    //way_ptr_t replaceNext;
+  } meta_entry_t;
+
+  typedef struct packed {
+    logic valid;
+    tag_t addrTag;
+    set_t addrSet;
+  } lfb_entry_t;
+
+  typedef Mem::w_t [3:0] line_t;
 
   offset_t coreOffset;
   assign coreOffset = core.addr[0+:OFFSET_BITS];
@@ -26,142 +44,145 @@ module L1DCache #(
   tag_t coreTag;
   assign coreTag = core.addr[OFFSET_BITS+SET_BITS+:TAG_BITS];
 
-  typedef struct packed {
-    logic valid;
-    tag_t tag;
-  } meta_entry_t;
-
-  typedef struct packed {
-    logic success;
-    logic fired;
-    logic commited;
-    offset_t addrOffset;
-    set_t addrSet;
-    tag_t addrTag;
-    logic [3:0] mask;
-    Uop::w_t data;
-    logic valid;
-  } stq_entry_t;
-
-  typedef struct packed {
-    logic valid;
-    tag_t addrTag;
-    set_t addrSet;
-    logic fired;
-  } lfb_entry_t;
-
-  typedef logic [STQ_SZ_EXP - 1:0] stq_ptr_t;
-  typedef Uop::w_t [3:0] line_t;
-
   meta_entry_t meta[SETS];
-  line_t mem[SETS];
+  line_t mem[WAYS][SETS];
 
-  stq_entry_t stq[STQ_SZ];
-  stq_ptr_t stqR;
-  stq_ptr_t stqW;
-  logic stqFull;
-
-  lfb_entry_t lfb[LFB_SZ];
-
+  logic enHold;
+  logic enWHold;
   tag_t tagHold;
+  set_t setHold;
   offset_t offsetHold;
-  logic isStHold;
 
-  logic stFail;
-
-  logic forwardPresent;
-  logic forwardLegal;
-  Uop::w_t forwardData;
-  logic [2*STQ_SZ-1:0] forwardPriority;
+  set_t storeSet;
+  offset_t storeOffset;
+  logic [3:0] storeMask;
+  Mem::w_t storeData;
+  logic [WAYS-1:0] storeWayHits;
 
   meta_entry_t entry;
-  line_t line;
+  line_t line[WAYS];
 
-  always_comb begin
-    logic lineValid = entry.valid && entry.tag == tagHold;
-    if (isStHold) begin
-      core.nack = stFail;
-    end else begin
-      core.nack = !(forwardPresent ? forwardLegal : lineValid);
-    end
-    if (forwardPresent) begin
-      core.respData = forwardData;
-    end else if (lineValid) begin
-      core.respData = line[offsetHold];
-    end else begin
-      core.respData = '0;
-    end
-  end
+  logic hit;
+  logic [WAYS-1:0] wayHits;
 
-  always_comb begin
-    logic [STQ_SZ-1:0] possibleForwards;
-    for (int i = 0; i < STQ_SZ; i++) begin
-      stq_entry_t e = stq[i];
-      logic _unused_e = &{1'b0,e};  // TODO remove, split CAM and STQ
-      possibleForwards[i]  = e.valid && e.addrTag == coreTag && e.addrSet == coreSet && e.addrOffset == coreOffset;
-      forwardPriority[i] = possibleForwards[i];
-      forwardPriority[i*2] = possibleForwards[i] & i < stqW; //TODO buggy when buffer full?
-    end
-  end
+  lfb_entry_t lfb[LFB_SZ];
+  //line_t lfbLines[LFB_SZ];
+  logic [LFB_SZ-1:0] lfbHits;
+  logic lfbHit;
+  logic lfbFreeHit;
+  lfb_ptr_t lfbFree;
 
-  //TODO remove
-  wire _unused_ok = &{1'b0, lfb[0], 1'b0};
+  assign core.nAck = !hit;
+
+  //TODO don't clear STQ entry on load cycle
+  //TODO maybe make use of the second port of the block ram. Needs extra bypassing and
+  //READ_FIRST/WRITE_FRIST though
+  // Store, Load, Store hazard?
+
   always_ff @(posedge clk) begin
     if (rst) begin
-      for (int i = 0; i < SETS; i++) begin
-        meta[i].valid <= '0;
+      for (int w = 0; w < WAYS; w++) begin
+        mem[w] <= '{default: '0};
       end
-      for (int i = 0; i < STQ_SZ; i++) begin
-        stq[i].valid <= '0;
-      end
-      mem <= '{default: '0};
-      stqFull <= '0;
-      stqR <= '0;
-      stqW <= '0;
-      for (int i = 0; i < LFB_SZ; i++) begin
-        lfb[i].valid <= '0;
-      end
+      meta <= '{default: '0};
+      enHold <= 0;
+      enWHold <= 0;
+      storeWayHits <= 0;
     end else begin
+      enHold  <= core.en;
+      enWHold <= core.enW;
+
       if (core.en) begin
         tagHold <= coreTag;
+        setHold <= coreSet;
         offsetHold <= coreOffset;
-        isStHold <= core.enW;
-        if (core.enW) begin
-          stFail <= 0;
-          if (stqFull) begin
-            stFail <= 1;
-          end else begin
-            stq_ptr_t stqWnext = {1'b0, stqW} + 1 == STQ_SZ[STQ_SZ_EXP:0] ? '0 : stqW + 1;
-            stq[stqW] <= '{
-                valid: '1,
-                data: core.reqData,
-                mask: core.mask,
-                addrTag: coreTag,
-                addrSet: coreSet,
-                addrOffset: coreOffset,
-                commited: '0,
-                fired: '0,
-                success: '0
-            };
-            stqW <= stqWnext;
-            if (stqWnext == stqR) begin
-              stqFull <= '1;
-            end
-          end
-        end else begin
-          entry <= meta[coreSet];
-          line <= mem[coreSet];
+      end
 
-          forwardPresent <= '0;
-          for (int i = 0; i < STQ_SZ * 2; i++) begin
-            if (forwardPriority[i]) begin
-              stq_entry_t e = stq[i%STQ_SZ];
-              logic _unused_e = &{1'b0, e};  // TODO remove, split CAM and STQ
-              forwardData <= e.data;
-              forwardPresent <= '1;
-              forwardLegal <= (e.mask | core.mask) == e.mask;
+      if (core.en && core.enW) begin  //Store
+        entry <= meta[coreSet];
+
+        storeSet <= coreSet;
+        storeOffset <= coreOffset;
+        storeMask <= core.mask;
+        storeData <= core.reqData;
+      end else if (core.en && !core.enW) begin  //Load
+        entry <= meta[coreSet];
+
+        for (int w = 0; w < WAYS; w++) begin
+          line[w] <= mem[w][coreSet];
+        end
+
+        if (enHold && enWHold) begin
+          storeWayHits <= wayHits;
+        end
+      end else if (!core.en || (core.en && core.enW)) begin  // Idle or Store
+        logic [WAYS-1:0] wHs = enHold && enWHold && hit ? wayHits : storeWayHits;
+        logic h = (enHold && enWHold && hit) || |storeWayHits;
+        storeWayHits <= 0;
+        if (h) begin
+          for (int w = 0; w < WAYS; w++) begin
+            if (wHs[w]) begin
+              for (int i = 0; i < 4; i++) begin
+                if (storeMask[i]) mem[w][storeSet][storeOffset][i*8+:8] <= storeData[i*8+:8];
+              end
             end
           end
+        end
+      end
+
+
+    end
+  end
+
+
+  // After meta data lookup
+  always_comb begin
+    for (int w = 0; w < WAYS; w++) begin
+      wayHits[w] = entry.valid[w] && entry.tag[w] == tagHold;
+    end
+    hit = |wayHits;
+    core.respData = 'x;
+    for (int w = 0; w < WAYS; w++) begin
+      if (wayHits[w]) begin
+        core.respData = line[w][offsetHold];
+      end
+    end
+  end
+
+  //LFB: search free entry
+  always_comb begin
+    lfbFreeHit = 0;
+    lfbFree = 0;
+    for (int i = LFB_SZ - 1; i >= 0; i--) begin
+      if (lfb[i].valid) begin
+        lfbFreeHit = 1;
+        lfbFree = i[LFB_PTR_BITS-1:0];
+      end
+    end
+  end
+
+  //LFB: Addr CAM
+  always_comb begin
+    for (int i = 0; i < LFB_SZ; i++) begin
+      lfbHits[i] = 0;
+      if (lfb[i].addrTag == coreTag && lfb[i].addrSet == coreSet) begin
+        lfbHits[i] = 1;
+      end
+    end
+  end
+
+  always_ff @(posedge clk) begin
+    lfbHit <= |lfbHits;
+  end
+
+  //LFB: reserve new entry on miss that is not already in LFB
+  always_ff @(posedge clk) begin
+    if (rst) begin
+      lfb <= '{default: '0};
+    end else begin
+      if (enHold) begin
+        if (!hit && !lfbHit && lfbFreeHit) begin
+          lfb[lfbFree] <= '{valid: 1, addrTag: tagHold, addrSet: setHold};
         end
       end
     end

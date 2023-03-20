@@ -1,5 +1,6 @@
 `include "Instr.sv"
 `include "Uop.sv"
+`include "Mem.sv"
 
 module PlaygroundTB (
     input logic clk,

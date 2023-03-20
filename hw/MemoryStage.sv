@@ -27,7 +27,7 @@ module MemoryStage #(
 
     case (currUop.memOp.sz)
       MEM_OP_SZ_B: begin
-        cache.mask = 4'b0001 << currUop.rdVal[1:0];  //TODO alignment
+        cache.mask = 4'b0001 << currUop.rdVal[1:0];
       end
       MEM_OP_SZ_H: begin
         case (currUop.rdVal[1:0])
@@ -46,11 +46,12 @@ module MemoryStage #(
       default: cache.mask = '0;
     endcase
 
-    if (u.valid && !currUop.exValid && !addrUnaligned) begin
+    if (u.valid && !rst && !currUop.exValid && !addrUnaligned) begin
       if (currUop.memOp.isSt) begin
         cache.en  = '1;
         cache.enW = '1;
-      end else if (currUop.memOp.isLd) begin
+      end
+      if (currUop.memOp.isLd) begin
         cache.en = '1;
       end
     end
@@ -75,17 +76,17 @@ module MemoryStage #(
     uopOut.rdVal = rdVal;
     uopOut.flagsValid = flagsValid;
     uopOut.flags = flags;
-    uopOut.memNack = cache.nack;
+    uopOut.memNack = cache.nAck;
 
 
     if (memOp.isLd) begin
       case (memOp.sz)
         MEM_OP_SZ_B: begin
-          b_t b = cache.respData[rdVal[1:0]*8+:8];
+          Mem::b_t b = cache.respData[rdVal[1:0]*8+:8];
           uopOut.rdVal = {memOp.signExtend ? {24{b[7]}} : 24'b0, b};
         end
         MEM_OP_SZ_H: begin
-          hw_t hw = cache.respData[rdVal[1]*16+:16];
+          Mem::hw_t hw = cache.respData[rdVal[1]*16+:16];
           uopOut.rdVal = {memOp.signExtend ? {16{hw[15]}} : 16'b0, hw};
         end
         MEM_OP_SZ_W: begin
