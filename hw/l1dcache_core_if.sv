@@ -1,13 +1,14 @@
 interface l1dcache_core_if;
-  logic en;
-  logic enW;
-  logic [3:0] mask;
-  Mem::waddr_t addr;
-  Mem::w_t reqData;
-  Mem::w_t respData;
-  logic nAck;
+  logic req_valid;
+  logic req_we;
+  logic [3:0] req_mask;
+  Mem::waddr_t req_addr;
+  Mem::w_t req_data;
 
-  modport Server(input en, enW, mask, addr, reqData, output respData, nAck);
+  Mem::w_t resp_data;
+  logic resp_ack;
 
-  modport Client(input respData, nAck, output en, enW, mask, addr, reqData);
+  modport Server(input req_valid, req_we, req_mask, req_addr, req_data, output resp_data, resp_ack);
+
+  modport Client(output req_valid, req_we, req_mask, req_addr, req_data, input resp_data, resp_ack);
 endinterface

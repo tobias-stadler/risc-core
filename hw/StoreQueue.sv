@@ -1,6 +1,8 @@
 module StoreQueue #(
     parameter int STQ_SZ_EXP = 3
 ) (
+    input logic clk,
+    input logic rst,
     l1dcache_core_if.Server core,
     l1dcache_core_if.Client cache
 );
@@ -10,105 +12,128 @@ module StoreQueue #(
   typedef logic [STQ_SZ_EXP - 1:0] stq_ptr_t;
 
   typedef struct packed {
-    logic success;
-    logic fired;
-    logic commited;
-    Uop::waddr_t addr;
-    logic [3:0] mask;
-    Uop::w_t data;
     logic valid;
+    Mem::waddr_t addr;
+  } cam_entry_t;
+
+  typedef struct packed {
+    logic [3:0] mask;
+    Mem::w_t data;
   } stq_entry_t;
 
-
+  cam_entry_t cam[STQ_SZ];
   stq_entry_t stq[STQ_SZ];
   stq_ptr_t stqR;
+  stq_ptr_t stqRnext;
   stq_ptr_t stqW;
   logic stqFull;
 
   logic stFail;
+  logic stHold;
+  logic stFired;
+  logic stClear;
 
   logic forwardPresent;
   logic forwardLegal;
-  Uop::w_t forwardData;
+  Mem::w_t forwardData;
+  logic [STQ_SZ-1:0] possibleForwards;
   logic [2*STQ_SZ-1:0] forwardPriority;
 
   //Before registers
   always_comb begin
-    core.
+    stq_ptr_t p = stFired && !cache.nAck || stClear ? stqRnext : stqR;
 
-    logic [STQ_SZ-1:0] possibleForwards;
+    cache.mask = core.mask;
+    cache.addr = core.addr;
+    cache.reqData = core.reqData;
+    cache.en = 0;
+    cache.enW = 0;
+    if (core.en && !core.enW) begin
+      cache.en = 1;
+    end else if (!core.en) begin
+      cache.enW = 1;
+      cache.en = cam[p].valid;
+      cache.addr = cam[p].addr;
+      cache.mask = stq[p].mask;
+      cache.reqData = stq[p].data;
+    end
+
     for (int i = 0; i < STQ_SZ; i++) begin
-      stq_entry_t e = stq[i];
-      logic _unused_e = &{1'b0, e};  // TODO remove, split CAM and STQ
-      possibleForwards[i]  = e.valid && e.addrTag == coreTag && e.addrSet == coreSet && e.addrOffset == coreOffset;
+      cam_entry_t e = cam[i];
+      possibleForwards[i] = e.valid && e.addr == core.addr;
       forwardPriority[i] = possibleForwards[i];
-      forwardPriority[i*2] = possibleForwards[i] & i < stqW;  //TODO buggy when buffer full?
+      forwardPriority[i+STQ_SZ] = possibleForwards[i] & i < stqW;  //TODO buggy when buffer full?
     end
   end
 
   //After registers
   always_comb begin
-    logic lineValid = entry.valid && entry.tag == tagHold;
-    if (isStHold) begin
-      core.nack = stFail;
+    if (stHold) begin
+      core.nAck = stFail;
     end else begin
-      core.nack = !(forwardPresent ? forwardLegal : lineValid);
+      core.nAck = forwardPresent ? !forwardLegal : cache.nAck;
     end
     if (forwardPresent) begin
       core.respData = forwardData;
-    end else if (lineValid) begin
-      core.respData = line[offsetHold];
     end else begin
-      core.respData = '0;
+      core.respData = cache.respData;
     end
   end
 
   always_ff @(posedge clk) begin
     if (rst) begin
-      stq <= '{default: '0};
-      mem <= '{default: '0};
-      stqFull <= '0;
-      stqR <= '0;
-      stqW <= '0;
+      stq <= '{default: 0};
+      cam <= '{default: 0};
+      stqFull <= 0;
+      stqR <= 0;
+      stqRnext <= 1;
+      stqW <= 0;
+      stFail <= 0;
+      stHold <= 0;
+      stFired <= 0;
+      stClear <= 0;
     end else begin
-      if (core.en) begin
-        if (core.enW) begin
-          stFail <= 0;
-          if (stqFull) begin
-            stFail <= 1;
-          end else begin
-            stq_ptr_t stqWnext = {1'b0, stqW} + 1 == STQ_SZ[STQ_SZ_EXP:0] ? '0 : stqW + 1;
-            stq[stqW] <= '{
-                valid: '1,
-                data: core.reqData,
-                mask: core.mask,
-                addrTag: coreTag,
-                addrSet: coreSet,
-                addrOffset: coreOffset,
-                commited: '0,
-                fired: '0,
-                success: '0
-            };
-            stqW <= stqWnext;
-            if (stqWnext == stqR) begin
-              stqFull <= '1;
-            end
-          end
+      stHold  <= 0;
+      stFired <= 0;
+      stClear <= 0;
+      if (core.en && core.enW) begin  //Store
+        stHold <= 1;
+        stFail <= 0;
+        if (stqFull) begin
+          stFail <= 1;
         end else begin
-          entry <= meta[coreSet];
-          line <= mem[coreSet];
-
-          forwardPresent <= '0;
-          for (int i = 0; i < STQ_SZ * 2; i++) begin
-            if (forwardPriority[i]) begin
-              stq_entry_t e = stq[i%STQ_SZ];
-              logic _unused_e = &{1'b0, e};  // TODO remove, split CAM and STQ
-              forwardData <= e.data;
-              forwardPresent <= '1;
-              forwardLegal <= (e.mask | core.mask) == e.mask;
-            end
+          stq_ptr_t stqWnext = {1'b0, stqW} + 1 == STQ_SZ[STQ_SZ_EXP:0] ? 0 : stqW + 1;
+          cam[stqW] <= '{valid: 1, addr: core.addr};
+          stq[stqW] <= '{mask: core.mask, data: core.reqData};
+          stqW <= stqWnext;
+          if (stqWnext == stqR) begin
+            stqFull <= 1;
           end
         end
+      end else if (core.en && !core.enW) begin  //Load
+        stClear <= stFired && !cache.nAck;
+        forwardPresent <= 0;
+        for (int i = 0; i < STQ_SZ * 2; i++) begin
+          if (forwardPriority[i]) begin
+            stq_entry_t e = stq[i%STQ_SZ];
+            forwardData <= e.data;
+            forwardPresent <= 1;
+            forwardLegal <= (e.mask | core.mask) == e.mask;
+          end
+        end
+      end else begin
+        stFired <= cache.en && cache.enW;
+      end
+
+      // On non-load cycle the cache accesses the data RAM.
+      // Only then can the STQ entry be cleared otherwise store-forwarding
+      // would stop before the data reaches the cache line.
+      if ((stFired && !cache.nAck || stClear) && (!core.en || core.enW)) begin
+        stq_ptr_t stqRnext2 = {1'b0, stqRnext} + 1 == STQ_SZ[STQ_SZ_EXP:0] ? 0 : stqRnext + 1;
+        stqRnext <= stqRnext2;
+        stqR <= stqRnext;
+        stqFull <= 0;
+        cam[stqR].valid <= 0;
       end
     end
   end

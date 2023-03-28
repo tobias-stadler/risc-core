@@ -20,7 +20,7 @@ module WriteBackStage (
     u.stall = '0;
 
     if (u.valid) begin
-      flush = isEx;
+      flush = isEx & 0; //TODO remove!!!
       write0.en = ~isEx;
     end else begin
       flush = '0;

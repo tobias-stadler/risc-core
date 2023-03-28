@@ -76,7 +76,7 @@ module Decoder (
         dec.imm = immS;
         dec.rs1 = enc.s.rs1;
         dec.rs2 = enc.s.rs2;
-        dec.memOp.isLd = '1;
+        dec.memOp.isSt = '1;
         case (enc.s.funct3)
           Instr::OP_ST_B: dec.memOp.sz = Uop::MEM_OP_SZ_B;
           Instr::OP_ST_H: dec.memOp.sz = Uop::MEM_OP_SZ_H;

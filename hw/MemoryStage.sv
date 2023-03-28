@@ -19,46 +19,46 @@ module MemoryStage #(
 
   //Before pipeline registers
   always_comb begin
-    cache.en = '0;
-    cache.enW = '0;
-    cache.addr = currUop.rdVal[31:2];
-    cache.reqData = currUop.rs2Val;
-    addrUnaligned = '0;
+    cache.req_valid = 0;
+    cache.req_we = 0;
+    cache.req_addr = currUop.rdVal[31:2];
+    cache.req_data = currUop.rs2Val;
+    addrUnaligned = 0;
 
     case (currUop.memOp.sz)
       MEM_OP_SZ_B: begin
-        cache.mask = 4'b0001 << currUop.rdVal[1:0];
+        cache.req_mask = 4'b0001 << currUop.rdVal[1:0];
       end
       MEM_OP_SZ_H: begin
         case (currUop.rdVal[1:0])
-          0: cache.mask = 4'b0011;
-          2: cache.mask = 4'b1100;
+          0: cache.req_mask = 4'b0011;
+          2: cache.req_mask = 4'b1100;
           default: begin
-            cache.mask = '0;
-            addrUnaligned = '1;
+            cache.req_mask = 0;
+            addrUnaligned = 1;
           end
         endcase
       end
       MEM_OP_SZ_W: begin
-        cache.mask = 4'b1111;
+        cache.req_mask = 4'b1111;
         addrUnaligned = |currUop.rdVal[1:0];
       end
-      default: cache.mask = '0;
+      default: cache.req_mask = 0;
     endcase
 
     if (u.valid && !rst && !currUop.exValid && !addrUnaligned) begin
       if (currUop.memOp.isSt) begin
-        cache.en  = '1;
-        cache.enW = '1;
+        cache.req_valid  = 1;
+        cache.req_we = 1;
       end
       if (currUop.memOp.isLd) begin
-        cache.en = '1;
+        cache.req_valid = 1;
       end
     end
 
   end
 
-  assign u.stall = '0;
+  assign u.stall = 0;
 
   ex_t ex;
   logic exValid;
@@ -76,21 +76,20 @@ module MemoryStage #(
     uopOut.rdVal = rdVal;
     uopOut.flagsValid = flagsValid;
     uopOut.flags = flags;
-    uopOut.memNack = cache.nAck;
-
+    uopOut.memNack = (memOp.isLd || memOp.isSt) && !cache.resp_ack;
 
     if (memOp.isLd) begin
       case (memOp.sz)
         MEM_OP_SZ_B: begin
-          Mem::b_t b = cache.respData[rdVal[1:0]*8+:8];
+          Mem::b_t b = cache.resp_data[rdVal[1:0]*8+:8];
           uopOut.rdVal = {memOp.signExtend ? {24{b[7]}} : 24'b0, b};
         end
         MEM_OP_SZ_H: begin
-          Mem::hw_t hw = cache.respData[rdVal[1]*16+:16];
+          Mem::hw_t hw = cache.resp_data[rdVal[1]*16+:16];
           uopOut.rdVal = {memOp.signExtend ? {16{hw[15]}} : 16'b0, hw};
         end
         MEM_OP_SZ_W: begin
-          uopOut.rdVal = cache.respData;
+          uopOut.rdVal = cache.resp_data;
         end
         default: ;
       endcase
@@ -116,12 +115,12 @@ module MemoryStage #(
     if (u.valid) begin
       if (currUop.exValid) begin
         ex <= currUop.ex;
-        exValid <= '1;
+        exValid <= 1;
       end else if (addrUnaligned) begin
         ex <= EX_MEM_ALIGN;
-        exValid <= '1;
+        exValid <= 1;
       end else begin
-        exValid <= '0;
+        exValid <= 0;
       end
 
       rd <= currUop.rd;

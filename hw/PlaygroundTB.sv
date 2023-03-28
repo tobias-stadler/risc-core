@@ -22,7 +22,9 @@ module PlaygroundTB (
   bypass_if if_memBypass;
   bypass_if if_wbBypass;
 
-  l1dcache_core_if if_l1dCore;
+  //l1dcache_core_if if_l1dStq;
+  l1dcache_core_if if_stqCore;
+  l1cache_mem_if if_dBus;
 
   Uop::fetch_t instrFetch;
   Uop::decode_t instrDec;
@@ -39,15 +41,25 @@ module PlaygroundTB (
       .write0(write0)
   );
 
-  L1DCache m_l1dcache (
+  L1DCache m_l1dCache (
       .clk (clk),
       .rst (rst),
-      .core(if_l1dCore)
+      .core(if_stqCore),
+      .bus(if_dBus)
   );
+
+  /*
+  StoreQueue m_stq (
+      .clk  (clk),
+      .rst  (rst),
+      .core (if_stqCore),
+      .cache(if_l1dStq)
+  );
+  */
 
   DecodeStage m_decodeStage (
       .clk(clk),
-      .rst(rst|flush),
+      .rst(rst | flush),
       .u(if_fetch),
       .d(if_decode),
       .read0(read0),
@@ -58,7 +70,7 @@ module PlaygroundTB (
 
   ExecuteStage m_execStage (
       .clk(clk),
-      .rst(rst|flush),
+      .rst(rst | flush),
       .u(if_decode),
       .d(if_exec),
       .uopIn(instrDec),
@@ -69,13 +81,13 @@ module PlaygroundTB (
 
   MemoryStage m_memStage (
       .clk(clk),
-      .rst(rst|flush),
+      .rst(rst | flush),
       .u(if_exec),
       .d(if_mem),
       .uopIn(instrExec),
       .uopOut(instrMem),
       .bypass(if_memBypass),
-      .cache(if_l1dCore)
+      .cache(if_stqCore)
   );
 
   WriteBackStage m_wbStage (
@@ -91,4 +103,11 @@ module PlaygroundTB (
   assign instrFetch = instr;
   assign if_fetch.valid = valid;
   assign stall = if_fetch.stall;
+
+
+  assign if_dBus.resp_ack = 0;
+  assign if_dBus.resp_data = 0;
+  assign if_dBus.req_ready = 0;
+  wire _unused_ok = &{1'b0,if_dBus.req_valid,if_dBus.req_we,if_dBus.req_data,if_dBus.req_addr};
+
 endmodule

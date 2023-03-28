@@ -20,16 +20,10 @@ int main() {
 
   std::vector<Instr> instrs{
       Add(R::X1, R::X0, 0x40),
-      Add(R::X2, R::X0, 0x50),
+      Add(R::X2, R::X0, 0x550),
       Stw(R::X1, 4, R::X2),
       Stw(R::X1, 4, R::X2),
-      Stw(R::X1, 4, R::X2),
-      Stw(R::X1, 4, R::X2),
-      Stw(R::X1, 4, R::X2),
-      Stw(R::X1, 4, R::X2),
-      Stw(R::X1, 4, R::X2),
-      Stw(R::X1, 4, R::X2),
-      Stw(R::X1, 4, R::X2),
+      Stb(R::X1, 4, R::X2),
   };
   std::cout << "Running verilated model...\n";
 
