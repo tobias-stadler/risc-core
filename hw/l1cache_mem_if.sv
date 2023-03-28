@@ -3,8 +3,8 @@ interface l1cache_mem_if;
   logic req_valid;
   logic req_ready;
   logic req_we;
-  Mem::waddr_t req_addr;
-  Mem::w_t req_data;
+  Mem::lineaddr_t req_addr;
+  Mem::line_t req_data;
 
   Mem::w_t resp_data;
   logic resp_ack;

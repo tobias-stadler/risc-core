@@ -35,8 +35,7 @@ module L1DCache #(
   typedef struct packed {
     logic valid;
     logic fired;
-    tag_t addrTag;
-    set_t addrSet;
+    lineaddr_t addr;
   } lfb_entry_t;
 
   offset_t offset;
@@ -73,47 +72,30 @@ module L1DCache #(
   meta_entry_t meta_din;
   meta_entry_t meta_dout_q;
 
-  line_t mem[WAYS][SETS];
   logic mem_en[WAYS];
-  logic mem_we[WAYS];
   set_t mem_addr[WAYS];
   linemask_t mem_mask[WAYS];
   line_t mem_din[WAYS];
-  line_t mem_dout_q[WAYS];
+  line_t mem_dout[WAYS];
 
   //TODO Store, Load, Store hazard?
   //TODO gate off memory when rst
 
-  // Initialize RAM using global reset
-  // because Xilinx BlockRAM does not support manual reset
-  initial begin
-    for (int w = 0; w < WAYS; w++) begin
-      mem[w] = '{default: '0};
-    end
-    meta = '{default: '0};
-  end
+  // Single port RAM with write byte-enable for every cache WAY
+  // Extracted into external module because Vivado fails to infer byte-enable on 3D RAM
+  // TODO make use of second Xilinx BlockRAM port  
+  ByteWriteSpRfRam #(
+      .COLS(16),
+      .ADDR_BITS(SET_BITS)
+  ) m_mem[WAYS] (
+      .clk(clk),
+      .en(mem_en),
+      .we(mem_mask),
+      .addr(mem_addr),
+      .data_i(mem_din),
+      .data_o(mem_dout)
+  );
 
-
-  // Infer a single port RAM with write byte-enable for every cache WAY
-  // Uses READ_FIRST behaviour to simplify cacheline replacement
-  // TODO check if BlockRAM is inferred
-  // TODO make use of second Xilinx BlockRAM port
-  generate
-    for (genvar w = 0; w < WAYS; w++) begin : g_mem_port1
-      always_ff @(posedge clk) begin
-        if (mem_en[w]) begin
-          if (mem_we[w]) begin
-            for (int i = 0; i < 16; i++) begin
-              if (mem_mask[w][i]) begin
-                mem[w][mem_addr[w]][i*8+:8] <= mem_din[w][i*8+:8];
-              end
-            end
-          end
-          mem_dout_q[w] <= mem[w][mem_addr[w]];
-        end
-      end
-    end
-  endgenerate
 
   // Infer single port RAM for meta data array
   always_ff @(posedge clk) begin
@@ -181,7 +163,6 @@ module L1DCache #(
 
     for (int w = 0; w < WAYS; w++) begin
       mem_en[w]   = 0;
-      mem_we[w]   = 0;
       mem_addr[w] = 0;
       mem_mask[w] = 0;
       mem_din[w]  = 0;
@@ -194,10 +175,9 @@ module L1DCache #(
     end else if (!core.req_valid || (core.req_valid && core.req_we)) begin  //Idle or Store
       for (int w = 0; w < WAYS; w++) begin
         mem_en[w] = wHs[w];
-        mem_we[w] = 1;
         mem_addr[w] = store_cacheset_q;
         mem_mask[w][store_offset_q*4+:4] = store_mask_q;
-        mem_din[w][store_offset_q*4+:32] = store_data_q;
+        mem_din[w][store_offset_q*32+:32] = store_data_q;
       end
     end
   end
@@ -213,7 +193,7 @@ module L1DCache #(
     core.resp_data = 0;
     for (int w = 0; w < WAYS; w++) begin
       if (wayhits_1[w]) begin
-        core.resp_data = mem_dout_q[w][offset_q*4+:32];
+        core.resp_data = mem_dout[w][offset_q*4+:32];
       end
     end
   end
@@ -246,23 +226,23 @@ module L1DCache #(
   always_comb begin
     for (int i = 0; i < LFB_SZ; i++) begin
       lfb_hits_1[i] = 0;
-      if (lfb[i].valid && lfb[i].addrTag == tag_q && lfb[i].addrSet == cacheset_q) begin
+      if (lfb[i].valid && lfb[i].addr == {tag_q, cacheset_q}) begin
         lfb_hits_1[i] = 1;
       end
     end
   end
 
   //TODO remove
-  wire _unused_ok = &{1'b0, lfb_unfired_valid, lfb_unfired, bus.resp_ack, bus.resp_data, bus.req_ready};
+  wire _unused_ok = &{1'b0, bus.resp_ack, bus.resp_data};
 
   //LFB: reserve new entry on miss that is not already in LFB
   always_ff @(posedge clk) begin
     if (rst) begin
-      lfb <= '{default: '0};
+      lfb <= '{default: 0};
     end else begin
       if (valid_q) begin
         if (!hit_1 && !(|lfb_hits_1) && lfb_free_valid) begin
-          lfb[lfb_free] <= '{valid: 1, fired: 0, addrTag: tag_q, addrSet: cacheset_q};
+          lfb[lfb_free] <= '{valid: 1, fired: 0, addr: {tag_q, cacheset_q}};
         end
       end
     end
@@ -270,12 +250,15 @@ module L1DCache #(
 
   //LFB: fire read request to memory
   always_ff @(posedge clk) begin
-    bus.req_valid <= 0;
-    bus.req_we <= 0;
-    bus.req_data <= 0;
-    bus.req_addr <= 0;
+
+    if (lfb_unfired_valid && bus.req_ready) begin
+      bus.req_valid <= 1;
+      bus.req_we <= 0;
+      bus.req_addr <= lfb[lfb_unfired].addr;
+      bus.req_data <= 0;
+      lfb[lfb_unfired].fired <= 1;
+    end
+
   end
-
-
 
 endmodule
