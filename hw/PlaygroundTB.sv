@@ -45,7 +45,7 @@ module PlaygroundTB (
       .clk (clk),
       .rst (rst),
       .core(if_stqCore),
-      .bus(if_dBus)
+      .bus (if_dBus)
   );
 
   /*
@@ -105,9 +105,10 @@ module PlaygroundTB (
   assign stall = if_fetch.stall;
 
 
-  assign if_dBus.resp_ack = 0;
+  assign if_dBus.resp_valid = 0;
   assign if_dBus.resp_data = 0;
+  assign if_dBus.resp_id = 0;
   assign if_dBus.req_ready = 0;
-  wire _unused_ok = &{1'b0,if_dBus.req_valid,if_dBus.req_we,if_dBus.req_data,if_dBus.req_addr};
+  wire _unused_ok = &{1'b0,if_dBus.req_valid,if_dBus.req_we,if_dBus.req_data,if_dBus.req_addr,if_dBus.req_id,if_dBus.resp_ready};
 
 endmodule

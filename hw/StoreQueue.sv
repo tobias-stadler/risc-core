@@ -125,6 +125,9 @@ module StoreQueue #(
         stFired <= cache.en && cache.enW;
       end
 
+
+      //TODO only clear stq entry when cacheline isn't being evicted
+
       // On non-load cycle the cache accesses the data RAM.
       // Only then can the STQ entry be cleared otherwise store-forwarding
       // would stop before the data reaches the cache line.
