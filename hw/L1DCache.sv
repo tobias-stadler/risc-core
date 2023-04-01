@@ -212,6 +212,7 @@ module L1DCache #(
         mem_mask[w][store_offset_q*4+:4] = store_mask_q;
         mem_din[w][store_offset_q*32+:32] = store_data_q;
       end
+      //TODO accept new store on store hit
     end else if (evict_valid_q) begin
       meta_en[evict_way_1] = 1;
       meta_we[evict_way_1] = 1;

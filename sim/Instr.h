@@ -359,7 +359,7 @@ private:
   }
 };
 
-constexpr Instr Nop(Reg rd, Reg rs1, Reg rs2) {
+constexpr Instr Nop() {
   return Instr{Op::NOP, Reg::NONE, Reg::NONE, Reg::NONE};
 }
 

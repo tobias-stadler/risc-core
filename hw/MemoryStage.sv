@@ -95,7 +95,7 @@ module MemoryStage #(
       endcase
     end
 
-    bypass.rValid = d.valid && (memOp.isLd || !memOp.isSt);
+    bypass.rValid = d.valid; // && (memOp.isLd || !memOp.isSt) not needed because store rd=0
     bypass.r = uopOut.rd;
     bypass.rVal = uopOut.rdVal;
 

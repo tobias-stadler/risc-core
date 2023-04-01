@@ -1,10 +1,20 @@
+#pragma once
+
 #include <cstdint>
-#include <utility>
+#include <functional>
 #include <memory>
 #include <new>
 #include <string>
+#include <utility>
 #include <verilated.h>
 #include <verilated_vcd_c.h>
+
+class PeripheralSim {
+public:
+  virtual ~PeripheralSim() = default;
+  virtual void cycle() = 0;
+  virtual void reset() = 0;
+};
 
 template <class T> class ClockedTB {
 
@@ -35,15 +45,21 @@ public:
     vcd->dump(context->time());
 
     context->timeInc(1);
+    for (auto sim : sims) {
+      sim.get().cycle();
+    }
   }
 
   virtual void reset() {
     model->rst = 1;
+    for (auto sim : sims) {
+      sim.get().reset();
+    }
     cycle();
     model->rst = 0;
   }
 
-  virtual T &getModel() { return *model; }
+  T &getModel() { return *model; }
 
   virtual void runUntil(std::uint64_t endTime) {
     while (!context->gotFinish() && context->time() < endTime) {
@@ -57,9 +73,12 @@ public:
     }
   }
 
+  void registerPeripheral(PeripheralSim &sim) { sims.push_back(sim); }
+
 private:
   std::string traceFileName;
   std::unique_ptr<VerilatedContext> context;
   std::unique_ptr<T> model;
   std::unique_ptr<VerilatedVcdC> vcd;
+  std::vector<std::reference_wrapper<PeripheralSim>> sims;
 };
