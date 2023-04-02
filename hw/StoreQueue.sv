@@ -119,10 +119,10 @@ module StoreQueue #(
 
     if (req_load_q) begin
       if (forward_hit_q) begin
-        core.resp_ack = forward_legal_q;
+        core.resp_ack  = forward_legal_q;
         core.resp_data = forward_data_q;
       end else begin
-        core.resp_ack = cache.resp_ack;
+        core.resp_ack  = cache.resp_ack;
         core.resp_data = cache.resp_data;
       end
     end else if (req_store_q) begin
@@ -157,13 +157,20 @@ module StoreQueue #(
         // Only then can the STQ entry be cleared otherwise store-forwarding
         // would stop before the data reaches the cache line.
 
-        //TODO FIFO read and write simultaneously
         store_clear_q2 <= 0;
         stq_r_next_q <= stq_r_next2;
         stq_r_q <= stq_r_next_q;
         stq_full_q <= 0;
         cam[stq_r_q].valid <= 0;
-      end else if (req_store) begin
+      end
+
+      //TODO FIFO read and write simultaneously race condition
+      // - w
+      // B r
+      // C
+      // D
+
+      if (req_store) begin
         stq_fail_q <= 0;
         if (stq_full_q) begin
           stq_fail_q <= 1;
