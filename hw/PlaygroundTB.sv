@@ -7,7 +7,19 @@ module PlaygroundTB (
     input logic rst,
     input Uop::fetch_t instr,
     input logic valid,
-    output logic stall
+    output logic stall,
+
+    output logic req_valid,
+    input logic req_ready,
+    output logic [1:0] req_id,
+    output logic req_we,
+    output Mem::lineaddr_t req_addr,
+    output Mem::line_t req_data,
+
+    input logic resp_valid,
+    output logic resp_ready,
+    input logic [1:0] resp_id,
+    input Mem::line_t resp_data
 );
 
   regfile_read_if read0;
@@ -22,7 +34,7 @@ module PlaygroundTB (
   bypass_if if_memBypass;
   bypass_if if_wbBypass;
 
-  //l1dcache_core_if if_l1dStq;
+  l1dcache_core_if if_l1dStq;
   l1dcache_core_if if_stqCore;
   l1cache_mem_if if_dBus;
 
@@ -44,18 +56,16 @@ module PlaygroundTB (
   L1DCache m_l1dCache (
       .clk (clk),
       .rst (rst),
-      .core(if_stqCore),
+      .core(if_l1dStq),
       .bus (if_dBus)
   );
 
-  /*
   StoreQueue m_stq (
       .clk  (clk),
       .rst  (rst),
       .core (if_stqCore),
       .cache(if_l1dStq)
   );
-  */
 
   DecodeStage m_decodeStage (
       .clk(clk),
@@ -104,11 +114,15 @@ module PlaygroundTB (
   assign if_fetch.valid = valid;
   assign stall = if_fetch.stall;
 
+  assign req_valid = if_dBus.req_valid;
+  assign req_we = if_dBus.req_we;
+  assign req_id = if_dBus.req_id;
+  assign req_addr = if_dBus.req_addr;
+  assign req_data = if_dBus.req_data;
+  assign if_dBus.req_ready = req_ready;
 
-  assign if_dBus.resp_valid = 0;
-  assign if_dBus.resp_data = 0;
-  assign if_dBus.resp_id = 0;
-  assign if_dBus.req_ready = 0;
-  wire _unused_ok = &{1'b0,if_dBus.req_valid,if_dBus.req_we,if_dBus.req_data,if_dBus.req_addr,if_dBus.req_id,if_dBus.resp_ready};
-
+  assign resp_ready = if_dBus.resp_ready;
+  assign if_dBus.resp_valid = resp_valid;
+  assign if_dBus.resp_data = resp_data;
+  assign if_dBus.resp_id = resp_id;
 endmodule

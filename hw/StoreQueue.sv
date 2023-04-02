@@ -23,60 +23,110 @@ module StoreQueue #(
 
   cam_entry_t cam[STQ_SZ];
   stq_entry_t stq[STQ_SZ];
-  stq_ptr_t stqR;
-  stq_ptr_t stqRnext;
-  stq_ptr_t stqW;
-  logic stqFull;
+  stq_ptr_t stq_r_q;
+  stq_ptr_t stq_r_next_q;
+  stq_ptr_t stq_r_next2;
+  stq_ptr_t stq_w_q;
+  stq_ptr_t stq_w_next;
+  logic stq_full_q;
+  logic stq_fail_q;
 
-  logic stFail;
-  logic stHold;
-  logic stFired;
-  logic stClear;
+  logic req_load;
+  logic req_store;
+  logic req_load_q;
+  logic req_store_q;
 
-  logic forwardPresent;
-  logic forwardLegal;
-  Mem::w_t forwardData;
-  logic [STQ_SZ-1:0] possibleForwards;
-  logic [2*STQ_SZ-1:0] forwardPriority;
+  logic forward_hit_q;
+  logic forward_legal_q;
+  Mem::w_t forward_data_q;
+  logic forward_hit;
+  stq_ptr_t forward_ptr;
+  logic forward_legal;
+  Mem::w_t forward_data;
+  logic [STQ_SZ-1:0] forward_hits;
+  logic [2*STQ_SZ-1:0] forward_hits_prio;
 
-  //Before registers
+  stq_ptr_t store_next;
+  logic store_firing;
+  logic store_firing_q;
+  logic store_clear_q2;
+  logic store_clear_valid;
+
+  assign req_load = core.req_valid && !core.req_we;
+  assign req_store = core.req_valid && core.req_we;
+
+  //TODO fix overflow
+  assign stq_w_next = stq_w_q + 1;
+  assign stq_r_next2 = stq_r_next_q + 1;
+  // {1'b0, stqW} + 1 == STQ_SZ[STQ_SZ_EXP:0] ? 0 : stqW + 1;
+  // {1'b0, stqRnext} + 1 == STQ_SZ[STQ_SZ_EXP:0] ? 0 : stqRnext + 1;
+
+
+  // Store forwarding CAM lookup
   always_comb begin
-    stq_ptr_t p = stFired && !cache.nAck || stClear ? stqRnext : stqR;
-
-    cache.mask = core.mask;
-    cache.addr = core.addr;
-    cache.reqData = core.reqData;
-    cache.en = 0;
-    cache.enW = 0;
-    if (core.en && !core.enW) begin
-      cache.en = 1;
-    end else if (!core.en) begin
-      cache.enW = 1;
-      cache.en = cam[p].valid;
-      cache.addr = cam[p].addr;
-      cache.mask = stq[p].mask;
-      cache.reqData = stq[p].data;
-    end
-
     for (int i = 0; i < STQ_SZ; i++) begin
-      cam_entry_t e = cam[i];
-      possibleForwards[i] = e.valid && e.addr == core.addr;
-      forwardPriority[i] = possibleForwards[i];
-      forwardPriority[i+STQ_SZ] = possibleForwards[i] & i < stqW;  //TODO buggy when buffer full?
+      forward_hits[i] = cam[i].valid && cam[i].addr == core.req_addr;
+      forward_hits_prio[i] = forward_hits[i];
+      forward_hits_prio[i+STQ_SZ] = forward_hits[i] & i < stq_w_q;  //TODO when buffer full?
     end
+
+    forward_hit = |forward_hits;
+    forward_ptr = 0;
+
+    //Priority encoder to search most recent forwardable store
+    for (int i = 0; i < STQ_SZ * 2; i++) begin
+      if (forward_hits_prio[i]) begin
+        forward_ptr = i[STQ_SZ_EXP-1:0];
+      end
+    end
+
+    forward_data  = stq[forward_ptr].data;
+    forward_legal = (stq[forward_ptr].mask | core.req_mask) == stq[forward_ptr].mask;
+  end
+
+  // Cache access
+  always_comb begin
+    store_clear_valid = (store_firing_q && cache.resp_ack) || store_clear_q2;
+    store_next = store_clear_valid ? stq_r_next_q : stq_r_q;
+
+    cache.req_valid = 0;
+    cache.req_we = 0;
+    cache.req_mask = 0;
+    cache.req_addr = 0;
+    cache.req_data = 0;
+
+    store_firing = 0;
+    if (req_load) begin
+      cache.req_valid = 1;
+      cache.req_mask  = core.req_mask;
+      cache.req_addr  = core.req_addr;
+      cache.req_data  = core.req_data;
+    end else begin
+      store_firing = cam[store_next].valid;
+      cache.req_we = 1;
+      cache.req_valid = cam[store_next].valid;
+      cache.req_addr = cam[store_next].addr;
+      cache.req_mask = stq[store_next].mask;
+      cache.req_data = stq[store_next].data;
+    end
+
   end
 
   //After registers
   always_comb begin
-    if (stHold) begin
-      core.nAck = stFail;
-    end else begin
-      core.nAck = forwardPresent ? !forwardLegal : cache.nAck;
-    end
-    if (forwardPresent) begin
-      core.respData = forwardData;
-    end else begin
-      core.respData = cache.respData;
+    core.resp_ack  = 0;
+    core.resp_data = 0;
+
+    if (req_load_q) begin
+      if (forward_hit_q) begin
+        core.resp_ack = forward_legal_q;
+        core.resp_data = forward_data_q;
+      end else begin
+        core.resp_ack = cache.resp_ack;
+        core.resp_data = cache.resp_data;
+      end
+    end else if (req_store_q) begin
+      core.resp_ack = !stq_fail_q;
     end
   end
 
@@ -84,59 +134,47 @@ module StoreQueue #(
     if (rst) begin
       stq <= '{default: 0};
       cam <= '{default: 0};
-      stqFull <= 0;
-      stqR <= 0;
-      stqRnext <= 1;
-      stqW <= 0;
-      stFail <= 0;
-      stHold <= 0;
-      stFired <= 0;
-      stClear <= 0;
+      stq_full_q <= 0;
+      stq_r_q <= 0;
+      stq_r_next_q <= 1;
+      stq_w_q <= 0;
+      req_load_q <= 0;
+      req_store_q <= 0;
+      store_firing_q <= 0;
+      store_clear_q2 <= 0;
     end else begin
-      stHold  <= 0;
-      stFired <= 0;
-      stClear <= 0;
-      if (core.en && core.enW) begin  //Store
-        stHold <= 1;
-        stFail <= 0;
-        if (stqFull) begin
-          stFail <= 1;
+      req_load_q <= req_load;
+      req_store_q <= req_store;
+      store_firing_q <= store_firing;
+      store_clear_q2 <= store_firing_q && cache.resp_ack;
+      forward_legal_q <= forward_legal;
+      forward_data_q <= forward_data;
+      forward_hit_q <= forward_hit;
+
+      if (req_load) begin
+      end else if (store_clear_valid) begin
+        // On non-load cycle the cache accesses the data RAM for stores.
+        // Only then can the STQ entry be cleared otherwise store-forwarding
+        // would stop before the data reaches the cache line.
+
+        //TODO FIFO read and write simultaneously
+        store_clear_q2 <= 0;
+        stq_r_next_q <= stq_r_next2;
+        stq_r_q <= stq_r_next_q;
+        stq_full_q <= 0;
+        cam[stq_r_q].valid <= 0;
+      end else if (req_store) begin
+        stq_fail_q <= 0;
+        if (stq_full_q) begin
+          stq_fail_q <= 1;
         end else begin
-          stq_ptr_t stqWnext = {1'b0, stqW} + 1 == STQ_SZ[STQ_SZ_EXP:0] ? 0 : stqW + 1;
-          cam[stqW] <= '{valid: 1, addr: core.addr};
-          stq[stqW] <= '{mask: core.mask, data: core.reqData};
-          stqW <= stqWnext;
-          if (stqWnext == stqR) begin
-            stqFull <= 1;
+          cam[stq_w_q] <= '{valid: 1, addr: core.req_addr};
+          stq[stq_w_q] <= '{mask: core.req_mask, data: core.req_data};
+          stq_w_q <= stq_w_next;
+          if (stq_w_next == stq_r_q) begin
+            stq_full_q <= 1;
           end
         end
-      end else if (core.en && !core.enW) begin  //Load
-        stClear <= stFired && !cache.nAck;
-        forwardPresent <= 0;
-        for (int i = 0; i < STQ_SZ * 2; i++) begin
-          if (forwardPriority[i]) begin
-            stq_entry_t e = stq[i%STQ_SZ];
-            forwardData <= e.data;
-            forwardPresent <= 1;
-            forwardLegal <= (e.mask | core.mask) == e.mask;
-          end
-        end
-      end else begin
-        stFired <= cache.en && cache.enW;
-      end
-
-
-      //TODO only clear stq entry when cacheline isn't being evicted
-
-      // On non-load cycle the cache accesses the data RAM.
-      // Only then can the STQ entry be cleared otherwise store-forwarding
-      // would stop before the data reaches the cache line.
-      if ((stFired && !cache.nAck || stClear) && (!core.en || core.enW)) begin
-        stq_ptr_t stqRnext2 = {1'b0, stqRnext} + 1 == STQ_SZ[STQ_SZ_EXP:0] ? 0 : stqRnext + 1;
-        stqRnext <= stqRnext2;
-        stqR <= stqRnext;
-        stqFull <= 0;
-        cam[stqR].valid <= 0;
       end
     end
   end
