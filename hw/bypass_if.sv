@@ -1,4 +1,4 @@
-interface bypass_if;
+interface bypass_if();
     logic rValid;
     Uop::reg_t r;
     Uop::val_t rVal;

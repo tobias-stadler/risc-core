@@ -1,4 +1,4 @@
-interface l1dcache_core_if;
+interface l1dcache_core_if();
   logic req_valid;
   logic req_we;
   logic [3:0] req_mask;

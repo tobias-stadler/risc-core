@@ -22,21 +22,21 @@ module PlaygroundTB (
     input Mem::line_t resp_data
 );
 
-  regfile_read_if read0;
-  regfile_read_if read1;
-  regfile_write_if write0;
+  pipeline_if if_fetch ();
+  pipeline_if if_decode ();
+  pipeline_if if_exec ();
+  pipeline_if if_mem ();
 
-  pipeline_if if_fetch;
-  pipeline_if if_decode;
-  pipeline_if if_exec;
-  pipeline_if if_mem;
+  regfile_read_if read0 ();
+  regfile_read_if read1 ();
+  regfile_write_if write0 ();
 
-  bypass_if if_memBypass;
-  bypass_if if_wbBypass;
+  bypass_if if_memBypass ();
+  bypass_if if_wbBypass ();
 
-  l1dcache_core_if if_l1dStq;
-  l1dcache_core_if if_stqCore;
-  l1cache_mem_if if_dBus;
+  l1dcache_core_if if_l1dStq ();
+  l1dcache_core_if if_stqCore ();
+  l1cache_mem_if if_dBus ();
 
   Uop::fetch_t instrFetch;
   Uop::decode_t instrDec;

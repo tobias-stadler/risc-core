@@ -1,4 +1,4 @@
-interface l1cache_mem_if;
+interface l1cache_mem_if();
 
   //Request channel
   logic req_valid;

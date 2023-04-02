@@ -178,7 +178,9 @@ module L1DCache #(
     evict_tag_1 = lfb[evict_id_q].addr[SET_BITS+:TAG_BITS];
 
     bus.resp_ready = !evict_valid_q;
+  end
 
+  always_comb begin
     for (int w = 0; w < WAYS; w++) begin
       meta_en[w] = 0;
       meta_we[w] = 0;
@@ -194,6 +196,7 @@ module L1DCache #(
       mem_mask[w] = 0;
       mem_din[w] = 0;
     end
+
     if (rst) begin
     end else if (req_load) begin
       for (int w = 0; w < WAYS; w++) begin
@@ -236,12 +239,14 @@ module L1DCache #(
       end
     end
   end
+
   always_ff @(posedge clk) begin
     if (rst) begin
       evict_valid_q <= 0;
       store_wayhits_q2 <= 0;
       req_load_q <= 0;
       req_store_q <= 0;
+      bus.req_valid <= 0;
       //req_idle_q <= 0;
     end else begin
       req_load_q  <= 0;
@@ -274,6 +279,32 @@ module L1DCache #(
         store_offset_q <= offset;
         store_mask_q <= core.req_mask;
         store_data_q <= core.req_data;
+      end
+    end
+
+    //LFB: reserve new entry on miss that is not already in LFB
+    if (req_load_q || req_store_q) begin
+      if (!hit_1 && !(|lfb_hits_1) && lfb_free_valid) begin
+        lfb[lfb_free] <= '{
+            valid: 1,
+            fired: 0,
+            ack: 0,
+            addr: {tag_q, cacheset_q},
+            evict: meta_common_dout_q.evict_next
+        };
+      end
+    end
+
+    //LFB: fire requests to memory
+    if (bus.req_ready) begin
+      bus.req_valid <= 0;
+      if (lfb_unfired_valid) begin
+        bus.req_valid <= 1;
+        bus.req_we <= 0;
+        bus.req_addr <= lfb[lfb_unfired].addr;
+        bus.req_data <= 0;
+        bus.req_id <= lfb_unfired;
+        lfb[lfb_unfired].fired <= 1;
       end
     end
   end
@@ -316,21 +347,6 @@ module L1DCache #(
     end
   end
 
-  //LFB: reserve new entry on miss that is not already in LFB
-  always_ff @(posedge clk) begin
-    if (req_load_q || req_store_q) begin
-      if (!hit_1 && !(|lfb_hits_1) && lfb_free_valid) begin
-        lfb[lfb_free] <= '{
-            valid: 1,
-            fired: 0,
-            ack: 0,
-            addr: {tag_q, cacheset_q},
-            evict: meta_common_dout_q.evict_next
-        };
-      end
-    end
-  end
-
   //LFB: search unfired miss
   always_comb begin
     lfb_unfired_valid = 0;
@@ -339,25 +355,6 @@ module L1DCache #(
       if (lfb[i].valid && !lfb[i].fired) begin
         lfb_unfired_valid = 1;
         lfb_unfired = i[LFB_PTR_BITS-1:0];
-      end
-    end
-  end
-
-  //LFB: fire requests to memory
-  always_ff @(posedge clk) begin
-    if (rst) begin
-      bus.req_valid <= 0;
-    end else begin
-      if (bus.req_ready) begin
-        bus.req_valid <= 0;
-        if (lfb_unfired_valid) begin
-          bus.req_valid <= 1;
-          bus.req_we <= 0;
-          bus.req_addr <= lfb[lfb_unfired].addr;
-          bus.req_data <= 0;
-          bus.req_id <= lfb_unfired;
-          lfb[lfb_unfired].fired <= 1;
-        end
       end
     end
   end
