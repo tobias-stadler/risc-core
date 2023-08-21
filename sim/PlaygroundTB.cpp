@@ -19,22 +19,13 @@ int main() {
   using namespace RISCS;
   using R = Reg;
 
-  std::vector<Instr> instrs{
-      Add(R::X1, R::X0, 0x40),
-      Add(R::X2, R::X0, 0x555),
-      Stb(R::X1, 0, R::X2),
-      Add(R::X2, R::X2, 1),
-      Stb(R::X1, 1, R::X2),
-      Add(R::X2, R::X2, 1),
-      Stb(R::X1, 2, R::X2),
-      Add(R::X2, R::X2, 1),
-      Stb(R::X1, 3, R::X2),
-      Add(R::X2, R::X2, 1),
-      Stw(R::X1, 4, R::X2),
-      Nop(),
-      Ldw(R::X3, R::X1, 4),
-      Nop()
-  };
+  std::vector<Instr> instrs{Add(R::X1, R::X0, 0x40), Add(R::X2, R::X0, 0x555),
+                            Stb(R::X1, 0, R::X2),    Add(R::X2, R::X2, 1),
+                            Stb(R::X1, 1, R::X2),    Add(R::X2, R::X2, 1),
+                            Stb(R::X1, 2, R::X2),    Add(R::X2, R::X2, 1),
+                            Stb(R::X1, 3, R::X2),    Add(R::X2, R::X2, 1),
+                            Stw(R::X1, 4, R::X2),    Nop(),
+                            Ldw(R::X3, R::X1, 4),    Nop()};
 
   Verilated::mkdir("trace");
 
@@ -42,11 +33,18 @@ int main() {
 
   VPlaygroundTB &m = tb.getModel();
 
-  MemoryControllerIf mIf{m.req_valid, m.req_ready, m.req_id,     m.req_we,
-                         m.req_addr,  m.req_data,  m.resp_valid, m.resp_ready,
-                         m.resp_id,   m.resp_data};
+  MemoryControllerIf iMemIf{m.i_req_valid,  m.i_req_ready,  m.i_req_id,
+                            m.i_req_we,     m.i_req_addr,   m.i_req_data,
+                            m.i_resp_valid, m.i_resp_ready, m.i_resp_id,
+                            m.i_resp_data};
 
-  MemoryControllerSim mem(0, 0xFFFF, mIf, 4);
+  MemoryControllerIf dMemIf{m.d_req_valid,  m.d_req_ready,  m.d_req_id,
+                            m.d_req_we,     m.d_req_addr,   m.d_req_data,
+                            m.d_resp_valid, m.d_resp_ready, m.d_resp_id,
+                            m.d_resp_data};
+
+  MemoryControllerSim dMem(0, 0xFFFF, dMemIf, 4);
+  MemoryControllerSim iMem(0, 0xFFFF, iMemIf, 4);
   tb.registerPeripheral(mem);
 
   mem.writeLE32(0x40, 0x41424344);

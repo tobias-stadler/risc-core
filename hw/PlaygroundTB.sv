@@ -5,21 +5,30 @@
 module PlaygroundTB (
     input logic clk,
     input logic rst,
-    input Uop::fetch_t instr,
-    input logic valid,
-    output logic stall,
 
-    output logic req_valid,
-    input logic req_ready,
-    output logic [1:0] req_id,
-    output logic req_we,
-    output Mem::lineaddr_t req_addr,
-    output Mem::line_t req_data,
+    output logic d_req_valid,
+    input logic d_req_ready,
+    output logic [1:0] d_req_id,
+    output logic d_req_we,
+    output Mem::lineaddr_t d_req_addr,
+    output Mem::line_t d_req_data,
 
-    input logic resp_valid,
-    output logic resp_ready,
-    input logic [1:0] resp_id,
-    input Mem::line_t resp_data
+    input logic d_resp_valid,
+    output logic d_resp_ready,
+    input logic [1:0] d_resp_id,
+    input Mem::line_t d_resp_data,
+
+    output logic i_req_valid,
+    input logic i_req_ready,
+    output logic [1:0] i_req_id,
+    output logic i_req_we,
+    output Mem::lineaddr_t i_req_addr,
+    output Mem::line_t i_req_data,
+
+    input logic i_resp_valid,
+    output logic i_resp_ready,
+    input logic [1:0] i_resp_id,
+    input Mem::line_t i_resp_data
 );
 
   pipeline_if if_fetch ();
@@ -38,6 +47,9 @@ module PlaygroundTB (
   l1dcache_core_if if_stqCore ();
   l1cache_mem_if if_dBus ();
 
+  l1icache_core_if if_l1iCore ();
+  l1cache_mem_if if_iBus ();
+
   Uop::fetch_t instrFetch;
   Uop::decode_t instrDec;
   Uop::execute_t instrExec;
@@ -53,6 +65,13 @@ module PlaygroundTB (
       .write0(write0)
   );
 
+  L1ICache m_l1iCache (
+      .clk (clk),
+      .rst (rst),
+      .core(if_l1iCore),
+      .bus (if_iBus)
+  );
+
   L1DCache m_l1dCache (
       .clk (clk),
       .rst (rst),
@@ -65,6 +84,14 @@ module PlaygroundTB (
       .rst  (rst),
       .core (if_stqCore),
       .cache(if_l1dStq)
+  );
+
+  IFetchStage m_fetchStage (
+      .clk(clk),
+      .rst(rst),
+      .d(if_fetch),
+      .uopOut(instrFetch),
+      .cache(if_l1iCore)
   );
 
   DecodeStage m_decodeStage (
@@ -110,19 +137,27 @@ module PlaygroundTB (
       .flush(flush)
   );
 
-  assign instrFetch = instr;
-  assign if_fetch.valid = valid;
-  assign stall = if_fetch.stall;
+  assign d_req_valid = if_dBus.req_valid;
+  assign d_req_we = if_dBus.req_we;
+  assign d_req_id = if_dBus.req_id;
+  assign d_req_addr = if_dBus.req_addr;
+  assign d_req_data = if_dBus.req_data;
+  assign if_dBus.req_ready = d_req_ready;
 
-  assign req_valid = if_dBus.req_valid;
-  assign req_we = if_dBus.req_we;
-  assign req_id = if_dBus.req_id;
-  assign req_addr = if_dBus.req_addr;
-  assign req_data = if_dBus.req_data;
-  assign if_dBus.req_ready = req_ready;
+  assign d_resp_ready = if_dBus.resp_ready;
+  assign if_dBus.resp_valid = d_resp_valid;
+  assign if_dBus.resp_data = d_resp_data;
+  assign if_dBus.resp_id = d_resp_id;
 
-  assign resp_ready = if_dBus.resp_ready;
-  assign if_dBus.resp_valid = resp_valid;
-  assign if_dBus.resp_data = resp_data;
-  assign if_dBus.resp_id = resp_id;
+  assign i_req_valid = if_iBus.req_valid;
+  assign i_req_we = if_iBus.req_we;
+  assign i_req_id = if_iBus.req_id;
+  assign i_req_addr = if_iBus.req_addr;
+  assign i_req_data = if_iBus.req_data;
+  assign if_iBus.req_ready = i_req_ready;
+
+  assign i_resp_ready = if_iBus.resp_ready;
+  assign if_iBus.resp_valid = i_resp_valid;
+  assign if_iBus.resp_data = i_resp_data;
+  assign if_iBus.resp_id = i_resp_id;
 endmodule

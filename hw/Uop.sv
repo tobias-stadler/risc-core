@@ -48,8 +48,6 @@ package Uop;
   } ex_t;
 
   typedef struct packed {
-    logic br;
-    logic brTaken;
     Instr::enc_t enc;
   } fetch_t;
 
