@@ -68,7 +68,7 @@ public:
   }
 
   virtual void runCycles(std::uint64_t cycles) {
-    for (std::uint64_t i = 0; !context->gotFinish() && i < cycles; cycles++) {
+    for (std::uint64_t i = 0; !context->gotFinish() && i < cycles; ++i) {
       cycle();
     }
   }

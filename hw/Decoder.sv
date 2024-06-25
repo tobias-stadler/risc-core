@@ -9,6 +9,15 @@ module Decoder (
   Uop::val_t immS;
   assign immS = {{20{enc.s.imm7[6]}}, enc.s.imm7, enc.s.imm5};
 
+  Uop::val_t immU;
+  assign immU = {{12{enc.u.imm[19]}}, enc.u.imm};
+
+  Uop::val_t immUUpper;
+  assign immUUpper = immU << 12;
+
+  Uop::val_t immUShift2;
+  assign immUShift2 = immU << 2;
+
   always_comb begin
     dec.ex = Uop::EX_DECODE;
     dec.exValid = 0;
@@ -21,6 +30,7 @@ module Decoder (
     dec.op = 0;
     dec.memOp = 0;
     dec.flagsValid = 0;
+    dec.s1IsPc = 0;
     case (enc.op.op)
       Instr::OP_NOP: ;
       Instr::OP_ARITH, Instr::OP_ARITHI: begin
@@ -83,6 +93,27 @@ module Decoder (
           Instr::OP_ST_W: dec.memOp.sz = Uop::MEM_OP_SZ_W;
           default: dec.exValid = '1;
         endcase
+      end
+      Instr::OP_BR: begin
+        dec.fu = Uop::FU_BR;
+        dec.op.intalu = Uop::INTALU_OP_ADD;
+        dec.op.brCond = enc.cu.cond;
+        dec.immValid = 1;
+        dec.imm = immUShift2;
+        dec.s1IsPc = 1;
+      end
+      Instr::OP_AUIPC: begin
+        dec.fu = Uop::FU_INTALU;
+        dec.op.intalu = Uop::INTALU_OP_ADD;
+        dec.immValid = 1;
+        dec.imm = immUUpper;
+        dec.s1IsPc = 1;
+      end
+      Instr::OP_LUI: begin
+        dec.fu = Uop::FU_INTALU;
+        dec.op.intalu = Uop::INTALU_OP_ADD;
+        dec.immValid = 1;
+        dec.imm = immUUpper;
       end
       default: dec.exValid = '1;
     endcase

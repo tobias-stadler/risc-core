@@ -19,7 +19,13 @@ int main() {
   using namespace RISCS;
   using R = Reg;
 
-  std::vector<Instr> instrs{Add(R::X1, R::X0, 0x40), Add(R::X2, R::X0, 0x555),
+  std::vector<Instr> instrs{Add(R::X1, R::X0, 10),   Sub(R::X1, R::X1, 1),
+                            Br(Cond::NZ, -1),        Add(R::X2, R::X0, 1),
+                            Add(R::X1, R::X1, 1),    Add(R::X1, R::X1, 1),
+                            Add(R::X1, R::X1, 1),    Add(R::X1, R::X1, 1),
+                            Add(R::X1, R::X1, 1),    Add(R::X1, R::X1, 1),
+
+                            Add(R::X1, R::X0, 0x40), Add(R::X2, R::X0, 0x555),
                             Stb(R::X1, 0, R::X2),    Add(R::X2, R::X2, 1),
                             Stb(R::X1, 1, R::X2),    Add(R::X2, R::X2, 1),
                             Stb(R::X1, 2, R::X2),    Add(R::X2, R::X2, 1),
@@ -45,25 +51,22 @@ int main() {
 
   MemoryControllerSim dMem(0, 0xFFFF, dMemIf, 4);
   MemoryControllerSim iMem(0, 0xFFFF, iMemIf, 4);
-  tb.registerPeripheral(mem);
 
-  mem.writeLE32(0x40, 0x41424344);
+  tb.registerPeripheral(dMem);
+  tb.registerPeripheral(iMem);
+  size_t iAddr = 0;
+  for (const Instr &in : instrs) {
+    std::uint32_t inEnc = in.encode();
+    std::cout << "Encoded: " << std::hex << inEnc << std::endl;
+    iMem.writeLE32(iAddr, inEnc);
+    iAddr += 4;
+  }
+
+  dMem.writeLE32(0x40, 0x41424344);
 
   std::cout << "Running verilated model...\n";
   tb.reset();
-  for (const Instr &in : instrs) {
-    std::uint32_t inEnc = in.encode();
-    std::cout << std::hex << inEnc << std::endl;
-    while (m.stall) {
-      tb.cycle();
-      std::cout << "stalled" << std::endl;
-    }
-    m.instr = inEnc;
-    m.valid = 1;
-    tb.cycle();
-  }
-  m.valid = 0;
-  tb.runUntil(100);
+  tb.runCycles(200);
 
   std::cout << "Simulation stopped\n";
   return EXIT_SUCCESS;

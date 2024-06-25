@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <iostream>
 #include <iterator>
 #include <list>
 #include <optional>
@@ -139,7 +140,12 @@ private:
   }
 
   void executeRequest(const Request &r) {
+    if(r.addr > mem.size()) {
+      std::cout << "Out of range: " << std::hex << r.addr << std::endl;
+      return;
+    }
     if (r.kind == RequestKind::READ) {
+      std::cout << "Read: " << std::hex << r.addr << std::endl;
       mIf.resp_data[0] = readLE32(r.addr);
       mIf.resp_data[1] = readLE32(r.addr + 4);
       mIf.resp_data[2] = readLE32(r.addr + 8);
@@ -147,6 +153,8 @@ private:
       mIf.resp_id = r.id;
       mIf.resp_valid = 1;
     } else if (r.kind == RequestKind::WRITE) {
+      std::cout << "Write: " << std::hex << r.addr << std::endl;
+      mIf.resp_data[0] = readLE32(r.addr);
       writeLE32(r.addr, r.data[0]);
       writeLE32(r.addr + 4, r.data[1]);
       writeLE32(r.addr + 8, r.data[2]);

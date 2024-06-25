@@ -6,7 +6,8 @@ package Uop;
 
   typedef enum logic [2:0] {
     FU_NONE,
-    FU_INTALU
+    FU_INTALU,
+    FU_BR
   } fu_t;
 
   typedef struct packed {
@@ -15,6 +16,11 @@ package Uop;
     logic s;
     logic z;
   } flags_t;
+
+  typedef struct packed {
+    logic valid;
+    iaddr_t pc;
+  } redirect_pc_t;
 
   typedef enum logic [2:0] {
     INTALU_OP_ADD,
@@ -40,7 +46,10 @@ package Uop;
     mem_op_sz_t sz;
   } mem_op_t;
 
-  typedef union packed {intalu_op_t intalu;} fu_op_t;
+  typedef struct packed {
+    intalu_op_t intalu;
+    Instr::cond_t brCond;
+  } fu_op_t;
 
   typedef enum logic [2:0] {
     EX_DECODE,
@@ -48,10 +57,12 @@ package Uop;
   } ex_t;
 
   typedef struct packed {
+    iaddr_t pc;
     Instr::enc_t enc;
   } fetch_t;
 
   typedef struct packed {
+    iaddr_t pc;
     ex_t ex;
     logic exValid;
     fu_t fu;
@@ -65,6 +76,7 @@ package Uop;
     imm_t imm;
     mem_op_t memOp;
     logic flagsValid;
+    logic s1IsPc;
   } decode_t;
 
   typedef struct packed {
@@ -100,6 +112,7 @@ package Uop;
     imm_t imm;
     mem_op_t memOp;
     logic flagsValid;
+    logic s1IsPc;
   } dec_t;
 
 endpackage

@@ -151,19 +151,20 @@ module L1ICache #(
         end
       end
 
-      if (req_valid_q) begin
-        //Cacheline received from bus
-        if (fired_q && bus.resp_valid && bus.resp_ready) begin
-          meta_en[lru_1] = 1;
-          meta_we[lru_1] = 1;
-          meta_addr[lru_1] = cacheset_q;
-          meta_din[lru_1] = '{valid: 1, tag: tag_q};
+      //Cacheline received from bus
+      if (fired_q && bus.resp_valid && bus.resp_ready) begin
+        meta_en[lru_1] = 1;
+        meta_we[lru_1] = 1;
+        meta_addr[lru_1] = cacheset_q;
+        meta_din[lru_1] = '{valid: 1, tag: tag_q};
 
-          mem_en[lru_1] = 1;
-          mem_we[lru_1] = 1;
-          mem_addr[lru_1] = cacheset_q;
-          mem_din[lru_1] = bus.resp_data;
-        end
+        mem_en[lru_1] = 1;
+        mem_we[lru_1] = 1;
+        mem_addr[lru_1] = cacheset_q;
+        mem_din[lru_1] = bus.resp_data;
+      end
+
+      if (req_valid_q) begin
         //Refetch cacheline after eviction
         if (evicted_q) begin
           for (int w = 0; w < WAYS; w++) begin
@@ -191,7 +192,7 @@ module L1ICache #(
     end
   end
 
-  assign core.req_ready = req_valid_q ? hit_1 : 1;
+  assign core.req_ready = (req_valid_q ? hit_1 : 1) && !fired_q;
 
   always_ff @(posedge clk) begin
     if (rst) begin
@@ -201,24 +202,25 @@ module L1ICache #(
       req_valid_q <= 0;
       fired_q <= 0;
       bus.req_valid <= 0;
-      evicted_q <= 1;
+      fired_q <= 0;
+      evicted_q <= 0;
     end else begin
       //New load request from core
       if (core.req_ready && core.req_valid) begin
         req_valid_q <= 1;
         tag_q <= tag;
         cacheset_q <= cacheset;
-      end else if (core.req_ready && !core.req_valid) begin
+      end else if (!core.req_valid) begin
         req_valid_q <= 0;
       end
 
       // Cacheline received from bus
-      if (req_valid_q && fired_q && bus.resp_ready && bus.resp_valid) begin
+      if (fired_q && bus.resp_ready && bus.resp_valid) begin
         evicted_q <= 1;
       end
 
       // Cacheline refetched
-      if (req_valid_q && evicted_q) begin
+      if (evicted_q) begin
         fired_q   <= 0;
         evicted_q <= 0;
       end
@@ -245,7 +247,7 @@ module L1ICache #(
   always_comb begin
     core.resp_valid = req_valid_q ? hit_1 : 0;
 
-    core.resp_data  = 0;
+    core.resp_data = 0;
     for (int w = 0; w < WAYS; w++) begin
       if (wayhits_1[w]) begin
         core.resp_data |= mem_dout_q[w];

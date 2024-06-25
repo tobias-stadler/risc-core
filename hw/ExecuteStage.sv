@@ -6,7 +6,8 @@ module ExecuteStage (
     input Uop::decode_t uopIn,
     output Uop::execute_t uopOut,
     bypass_if.Observer memBypass,
-    bypass_if.Observer wbBypass
+    bypass_if.Observer wbBypass,
+    output Uop::redirect_pc_t redirect
 );
 
   import Uop::*;
@@ -28,6 +29,10 @@ module ExecuteStage (
   val_t   s1Bypass;
   val_t   s2Bypass;
   flags_t flagsBypass;
+
+  val_t rdVal;
+  logic brValid;
+  logic brTaken;
 
   always_comb begin
     if (uopOut.flagsValid) begin
@@ -69,23 +74,61 @@ module ExecuteStage (
 
   IntALU m_alu (
       .op(currUop.op.intalu),
-      .s1(s1Bypass),
+      .s1(currUop.s1IsPc ? {currUop.pc, 2'b0} : s1Bypass),
       .s2(currUop.immValid ? currUop.imm : s2Bypass),
       .d(aluOut),
       .flags(aluFlags)
   );
 
   //TODO remove
-  wire _unused_ok = &{1'b0, flagsBypass};
+  wire _unused_ok = &{1'b0, brTaken};
 
   logic shouldStall;
   assign shouldStall = d.valid && uopOut.memOp.isLd &&
       (uopOut.rd == currUop.rs1 || uopOut.rd == currUop.rs2) && uopOut.rd != 0;
 
+  always_comb begin
+    logic lt = flagsBypass.v != flagsBypass.s;
+    logic ge = flagsBypass.v == flagsBypass.s;
+    case (currUop.op.brCond)
+      default: brTaken = 0;
+      Instr::COND_JMP: brTaken = 1;
+      Instr::COND_Z: brTaken = flagsBypass.z;
+      Instr::COND_NZ: brTaken = !flagsBypass.z;
+      Instr::COND_S: brTaken = flagsBypass.s;
+      Instr::COND_NS: brTaken = !flagsBypass.s;
+      Instr::COND_C: brTaken = flagsBypass.c;
+      Instr::COND_NC: brTaken = !flagsBypass.c;
+      Instr::COND_V: brTaken = flagsBypass.v;
+      Instr::COND_NV: brTaken = !flagsBypass.v;
+      Instr::COND_LT: brTaken = lt;
+      Instr::COND_LE: brTaken = flagsBypass.z || lt;
+      Instr::COND_GT: brTaken = !flagsBypass.z && ge;
+      Instr::COND_GE: brTaken = ge;
+    endcase
+  end
+
+  always_comb begin
+    brValid = 0;
+    rdVal = 'x;
+    case (currUop.fu)
+      FU_INTALU: begin
+        rdVal = aluOut;
+      end
+      FU_BR: begin
+        rdVal = {currUop.pc, 2'b0} + 4;
+        brValid = 1;
+      end
+      default:;
+    endcase
+  end
+
   always_ff @(posedge clk) begin
     if (rst) begin
       stallBufferValid <= 0;
       d.valid <= 0;
+      redirect.valid <= 0;
+      redirect.pc <= 'x;
     end else begin
       if (shouldStall) begin
         stallBufferValid <= 1;
@@ -101,14 +144,10 @@ module ExecuteStage (
         uopOut.rs2Val <= s2Bypass;
         uopOut.memOp <= currUop.memOp;
         uopOut.flagsValid <= currUop.flagsValid;
-
-        case (currUop.fu)
-          FU_INTALU: begin
-            uopOut.rdVal <= aluOut;
-            uopOut.flags <= aluFlags;
-          end
-          default: d.valid <= 0;
-        endcase
+        uopOut.flags <= aluFlags;
+        uopOut.rdVal <= rdVal;
+        redirect.valid <= brValid && brTaken;
+        redirect.pc <= aluOut[31:2];
       end
     end
   end

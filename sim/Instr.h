@@ -38,8 +38,11 @@ enum class Op {
   LDHS,
   STB,
   STH,
-  STW
+  STW,
+  BR,
 };
+
+enum class Cond { Z, NZ, S, NS, C, NC, V, NV, LT, LE, GT, GE, JMP };
 
 enum class Reg {
   NONE,
@@ -80,8 +83,6 @@ enum class Reg {
 
 class Instr {
 public:
-  enum class Cond { Z, NZ, C, NC, S, NS, OF, NOF, LT, LE, GT, GE };
-
   static constexpr std::uint8_t encodeReg(Reg reg) {
     switch (reg) {
     case Reg::X0:
@@ -185,6 +186,8 @@ public:
     case Op::STH:
     case Op::STW:
       return 0b0100011;
+    case Op::BR:
+      return 0b1100011;
     default:
       throw encoding_error("Invalid operation cannot be encoded");
     }
@@ -216,6 +219,39 @@ public:
       return 0b001;
     case Op::STW:
       return 0b010;
+    default:
+      throw encoding_error("Non-store operation cannot be encoded as store");
+    }
+  }
+
+  static constexpr std::uint8_t encodeCond(Cond cond) {
+    switch (cond) {
+    case Cond::Z:
+      return 0;
+    case Cond::NZ:
+      return 1;
+    case Cond::S:
+      return 2;
+    case Cond::NS:
+      return 3;
+    case Cond::C:
+      return 4;
+    case Cond::NC:
+      return 5;
+    case Cond::V:
+      return 6;
+    case Cond::NV:
+      return 7;
+    case Cond::LT:
+      return 8;
+    case Cond::LE:
+      return 9;
+    case Cond::GT:
+      return 10;
+    case Cond::GE:
+      return 11;
+    case Cond::JMP:
+      return 12;
     default:
       throw encoding_error("Non-store operation cannot be encoded as store");
     }
@@ -257,7 +293,7 @@ public:
                                          std::uint8_t funct3, std::uint8_t rs1,
                                          std::uint8_t rs2,
                                          std::uint8_t funct7) {
-    std::uint32_t instr = (op & nbits(6)) | (rd & nbits(5)) << 7 |
+    std::uint32_t instr = (op & nbits(7)) | (rd & nbits(5)) << 7 |
                           (funct3 & nbits(3)) << 12 | (rs1 & nbits(5)) << 15 |
                           (rs2 & nbits(5)) << 20 | (funct7 & nbits(7)) << 25;
     return instr;
@@ -270,7 +306,7 @@ public:
       throw encoding_error("Immediate would overflow");
     }
 
-    std::uint32_t instr = (op & nbits(6)) | (rd & nbits(5)) << 7 |
+    std::uint32_t instr = (op & nbits(7)) | (rd & nbits(5)) << 7 |
                           (funct3 & nbits(3)) << 12 | (rs1 & nbits(5)) << 15 |
                           (imm & nbits(12)) << 20;
     return instr;
@@ -283,10 +319,21 @@ public:
       throw encoding_error("Immediate would overflow");
     }
 
-    std::uint32_t instr = (op & nbits(6)) | (imm & nbits(5)) << 7 |
+    std::uint32_t instr = (op & nbits(7)) | (imm & nbits(5)) << 7 |
                           (funct3 & nbits(3)) << 12 | (rs1 & nbits(5)) << 15 |
                           (rs2 & nbits(5)) << 20 |
                           ((imm >> 5) & nbits(7)) << 25;
+    return instr;
+  }
+
+  static constexpr std::uint32_t encodeU(std::uint8_t op, std::uint8_t rs1,
+                                         std::int32_t imm) {
+    if (!truncateable(imm, 20)) {
+      throw encoding_error("Immediate would overflow");
+    }
+
+    std::uint32_t instr =
+        (op & nbits(7)) | (rs1 & nbits(5)) << 7 | (imm & nbits(20)) << 12;
     return instr;
   }
 
@@ -327,6 +374,8 @@ public:
     case Op::STW:
       return encodeS(opEnc, encodeStOp(op), encodeReg(rs1), encodeReg(rs2),
                      imm.value());
+    case Op::BR:
+      return encodeU(opEnc, encodeCond(cond.value()), imm.value());
     default:
       throw encoding_error("Invalid opcode cannot be encoded");
     }
@@ -342,12 +391,17 @@ public:
   constexpr Instr(Op op, Reg rd, Reg rs1, std::int32_t imm)
       : op(op), rd(rd), rs1(rs1), rs2(Reg::NONE), imm({imm}) {}
 
+  constexpr Instr(Op op, Cond cond, std::int32_t imm)
+      : op(op), rd(Reg::NONE), rs1(Reg::NONE), rs2(Reg::NONE), imm({imm}),
+        cond({cond}) {}
+
 private:
   Op op;
   Reg rd;
   Reg rs1;
   Reg rs2;
   std::optional<std::int32_t> imm;
+  std::optional<Cond> cond;
 
   static constexpr std::uint32_t nbits(int n) { return (1U << n) - 1; }
 
@@ -457,5 +511,9 @@ constexpr Instr Sth(Reg base, std::int32_t offset, Reg val) {
 
 constexpr Instr Stw(Reg base, std::int32_t offset, Reg val) {
   return Instr{Op::STW, Reg::NONE, base, val, offset};
+}
+
+constexpr Instr Br(Cond cond, std::int32_t offset) {
+  return Instr{Op::BR, cond, offset};
 }
 }; // namespace RISCS
