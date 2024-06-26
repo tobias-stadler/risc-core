@@ -11,4 +11,4 @@ run:
 	./build/VPlaygroundTB
 
 clean:
-	rm -rf build/ obj_dir/ compile_commands.json trace/ .cache/ tags
+	rm -rf build/ obj_dir/ compile_commands.json .cache/ tags

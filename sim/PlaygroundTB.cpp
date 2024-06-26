@@ -19,19 +19,23 @@ int main() {
   using namespace RISCS;
   using R = Reg;
 
-  std::vector<Instr> instrs{Add(R::X1, R::X0, 10),   Sub(R::X1, R::X1, 1),
-                            Br(Cond::NZ, -1),        Add(R::X2, R::X0, 1),
-                            Add(R::X1, R::X1, 1),    Add(R::X1, R::X1, 1),
-                            Add(R::X1, R::X1, 1),    Add(R::X1, R::X1, 1),
-                            Add(R::X1, R::X1, 1),    Add(R::X1, R::X1, 1),
+  std::vector<Instr> instrs{
+      /* Euclidean Algorithm */
+      Add(R::X10, R::X0, 2 * 3 * 3 * 3),  // X10 = 54
+      Add(R::X11, R::X0, 3 * 3 * 3 * 17), // X11 = 459
 
-                            Add(R::X1, R::X0, 0x40), Add(R::X2, R::X0, 0x555),
-                            Stb(R::X1, 0, R::X2),    Add(R::X2, R::X2, 1),
-                            Stb(R::X1, 1, R::X2),    Add(R::X2, R::X2, 1),
-                            Stb(R::X1, 2, R::X2),    Add(R::X2, R::X2, 1),
-                            Stb(R::X1, 3, R::X2),    Add(R::X2, R::X2, 1),
-                            Stw(R::X1, 4, R::X2),    Nop(),
-                            Ldw(R::X3, R::X1, 4),    Nop()};
+      // loopentry:
+      Br(Cond::JMP, 5), // goto loophdr
+      // loopbody:
+      Br(Cond::LE, 3),             // if X10 <= X11, goto smaller
+      Sub(R::X10, R::X10, R::X11), // X10 -= X11
+      Br(Cond::JMP, 2),            // goto loophdr
+      // smaller:
+      Sub(R::X11, R::X11, R::X10), // X11 -= X10
+      // loophdr:
+      Sub(R::X0, R::X10, R::X11),
+      Br(Cond::NZ, -5), // if X10 != X11, goto loopbody
+  };
 
   Verilated::mkdir("trace");
 

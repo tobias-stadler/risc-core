@@ -146,7 +146,7 @@ module ExecuteStage (
         uopOut.flagsValid <= currUop.flagsValid;
         uopOut.flags <= aluFlags;
         uopOut.rdVal <= rdVal;
-        redirect.valid <= brValid && brTaken;
+        redirect.valid <= currUopValid && brValid && brTaken;
         redirect.pc <= aluOut[31:2];
       end
     end
